@@ -8,3 +8,7 @@ app/build/
 keystore.properties
 *.jks
 *.keystore
+.kotlin/
+*.jpg
+*.png
+*.jpeg
