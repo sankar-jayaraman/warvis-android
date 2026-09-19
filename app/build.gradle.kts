@@ -19,8 +19,8 @@ android {
         applicationId = "com.warvis.android"
         minSdk = 31   // LiteRT-LM requires Android 12+
         targetSdk = 35
-        versionCode = 5
-            versionName = "0.5.0"
+        versionCode = 6
+        versionName = "0.6.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

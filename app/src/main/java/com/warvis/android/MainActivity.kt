@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import com.warvis.android.bedtime.BedtimeManager
+import com.warvis.android.doom.DoomShieldWeeklyReportManager
 import com.warvis.android.ui.WarvisApp
 import com.warvis.android.ui.theme.WarvisTheme
 
@@ -20,6 +21,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         ensureBedtimeChannel()
         BedtimeManager.scheduleIfEnabled(this)
+        DoomShieldWeeklyReportManager.schedule(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requestNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }

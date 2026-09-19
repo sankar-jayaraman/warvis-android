@@ -5,6 +5,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
+    <queries>
+        <package android:name="com.amazon.kindle" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -26,6 +30,10 @@
 
         <receiver
             android:name=".bedtime.BedtimeAlarmReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".doom.DoomShieldWeeklyReportReceiver"
             android:exported="false" />
 
         <receiver

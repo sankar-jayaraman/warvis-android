@@ -1,11 +1,12 @@
 package com.warvis.android.doom
 
 import android.accessibilityservice.AccessibilityService
+import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.net.Uri
+import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import com.warvis.android.bedtime.BedtimeManager
-import com.warvis.android.data.BacklogRepository
 
 class DoomShieldAccessibilityService : AccessibilityService() {
     private val recentInterventions = mutableMapOf<String, Long>()
@@ -21,7 +22,7 @@ class DoomShieldAccessibilityService : AccessibilityService() {
             ?: return
 
         if (shouldIntervene(target)) {
-            launchIntervention(target)
+            redirectToKindle(target)
         }
     }
 
@@ -48,20 +49,44 @@ class DoomShieldAccessibilityService : AccessibilityService() {
         return true
     }
 
-    private fun launchIntervention(target: DoomShieldTarget) {
-        val suggestion = BacklogRepository(applicationContext).pickSuggestion()
-        val isBedtime = BedtimeManager.isAfterBedtime() && BedtimeManager.isEnabledRaw(applicationContext)
-        val intent = Intent(this, DoomShieldInterventionActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            .putExtra(DoomShieldInterventionActivity.EXTRA_TARGET_KEY, target.key)
-            .putExtra(DoomShieldInterventionActivity.EXTRA_TARGET_LABEL, target.displayName)
-            .putExtra(DoomShieldInterventionActivity.EXTRA_SOURCE_LABEL, target.sourceLabel)
-            .putExtra(DoomShieldInterventionActivity.EXTRA_IS_BEDTIME, isBedtime)
-        if (suggestion != null) {
-            intent.putExtra(DoomShieldInterventionActivity.EXTRA_SUGGESTION_TITLE, suggestion.title)
-            intent.putExtra(DoomShieldInterventionActivity.EXTRA_SUGGESTION_BUCKET, suggestion.bucketId.displayName)
+    private fun redirectToKindle(target: DoomShieldTarget) {
+        val kindleIntent = packageManager.getLaunchIntentForPackage(KINDLE_PACKAGE_NAME)
+            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+
+        if (kindleIntent == null) {
+            openKindleStore()
+            return
         }
-        startActivity(intent)
+
+        try {
+            startActivity(kindleIntent)
+            DoomShieldSwitchLog.recordSwitch(applicationContext, target)
+        } catch (exception: ActivityNotFoundException) {
+            Log.e(TAG, "Kindle launch activity was not found", exception)
+            openKindleStore()
+        } catch (exception: SecurityException) {
+            Log.e(TAG, "Kindle launch was blocked", exception)
+            openKindleStore()
+        }
+    }
+
+    private fun openKindleStore() {
+        val marketIntent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("market://details?id=$KINDLE_PACKAGE_NAME"),
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+        try {
+            startActivity(marketIntent)
+        } catch (exception: ActivityNotFoundException) {
+            Log.e(TAG, "Play Store is unavailable; opening the Kindle web listing", exception)
+            startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://play.google.com/store/apps/details?id=$KINDLE_PACKAGE_NAME"),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
     }
 
     private fun findBlockedDomain(root: AccessibilityNodeInfo): String? {
@@ -82,5 +107,10 @@ class DoomShieldAccessibilityService : AccessibilityService() {
         }
 
         return null
+    }
+
+    companion object {
+        private const val TAG = "DoomShield"
+        private const val KINDLE_PACKAGE_NAME = "com.amazon.kindle"
     }
 }

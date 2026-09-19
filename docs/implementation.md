@@ -1,6 +1,6 @@
 # WARVIS Implementation Notes
 
-**Last Updated:** 2026-06-10
+**Last Updated:** 2026-09-19
 
 ## Project layout
 
@@ -14,6 +14,9 @@ app/src/main/java/com/warvis/android
 ├── doom
 │   ├── DoomShieldPolicy.kt
 │   ├── DoomShieldAccessibilityService.kt
+│   ├── DoomShieldSwitchLog.kt
+│   ├── DoomShieldWeeklyReportManager.kt
+│   ├── DoomShieldWeeklyReportReceiver.kt
 │   └── DoomShieldInterventionActivity.kt
 └── ui
     ├── WarvisApp.kt
@@ -60,9 +63,11 @@ Blocked browser domains:
 - `m.youtube.com`
 - `youtu.be`
 
-When a blocked target is detected, it starts `DoomShieldInterventionActivity`, which lets the user open WARVIS, go Home, or continue for 5 minutes.
+When a blocked target is detected, the service immediately opens Amazon Kindle. Android's package-visibility declaration allows WARVIS to locate Kindle's launch activity. If Kindle is unavailable, the service opens its Google Play listing instead.
 
-The 5-minute grace period is stored in app-private `SharedPreferences` keyed by blocked app or canonical domain. The feature does not store full URLs and does not send browser text to any server.
+Each successful Kindle handoff is recorded in app-private `SharedPreferences` with its timestamp and target key. `DoomShieldWeeklyReportManager` schedules an inexact repeating alarm for Sunday at 19:00 local time. The receiver compares Monday-to-Sunday handoffs with the preceding week, sends a progress notification, and removes events older than the comparison window.
+
+The existing 30-second per-target cooldown prevents repeated accessibility events from creating duplicate redirects. The feature does not store full URLs and does not send browser text or event history to any server.
 
 ## Design tradeoff
 

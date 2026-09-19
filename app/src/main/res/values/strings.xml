@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">WARVIS</string>
     <string name="doom_shield_accessibility_label">WARVIS Doom Shield</string>
-    <string name="doom_shield_accessibility_summary">Detects distracting websites and apps, then shows a WARVIS intervention.</string>
-    <string name="doom_shield_accessibility_description">WARVIS Doom Shield uses Accessibility to detect distracting apps and supported browsers displaying blocked domains like Facebook, Instagram, or YouTube. Matching is local on your device and full URLs are not stored.</string>
+    <string name="doom_shield_accessibility_summary">Detects distracting websites and apps, then redirects you to Kindle.</string>
+    <string name="doom_shield_accessibility_description">WARVIS Doom Shield uses Accessibility to detect distracting apps and supported browsers displaying blocked domains like Facebook, Instagram, or YouTube. It redirects you to Kindle and records the redirect locally for a weekly progress notification. Full URLs are not stored.</string>
 </resources>

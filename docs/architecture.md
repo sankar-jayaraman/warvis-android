@@ -1,6 +1,6 @@
 # WARVIS Architecture
 
-**Last Updated:** 2026-06-10
+**Last Updated:** 2026-09-19
 
 WARVIS is a single-module native Android app.
 
@@ -22,8 +22,11 @@ MainActivity
      -> Today / Sprint / Knowledge / Journey screens
 DoomShieldAccessibilityService
   -> detects blocked native apps and supported browser domains
-  -> launches DoomShieldInterventionActivity
-     -> Continue for 5 minutes stores a local per-target grace period
+  -> immediately launches Amazon Kindle
+  -> records each successful handoff locally
+DoomShieldWeeklyReportReceiver
+  -> compares the current week's handoffs with the previous week
+  -> sends a Sunday 19:00 local-time progress notification
 ```
 
 ## Data ownership
@@ -40,7 +43,9 @@ No network, backend, account, or cloud sync is used.
 
 Doom Shield is an opt-in Android Accessibility Service. After the user enables it in Android Accessibility settings, it detects blocked native apps such as Instagram and YouTube, and scans supported browser windows for blocked domains such as `facebook.com`, `instagram.com`, and `youtube.com`. Matching happens locally and full URLs are not stored.
 
-When the user taps **Continue for 5 minutes**, WARVIS stores a private per-target grace-period timestamp so the same app or domain can be used briefly before the next intervention.
+WARVIS immediately opens Amazon Kindle when a blocked target is detected. If Kindle is unavailable, WARVIS opens its Google Play listing. Successful Kindle handoffs are stored locally as timestamped events; target keys are retained for diagnostics, but full browser URLs are never stored.
+
+Every Sunday at 19:00 local time, WARVIS reports the number of handoffs during the current week and compares it with the previous week. The explicit goal is zero handoffs.
 
 ## Current persistence choice
 
