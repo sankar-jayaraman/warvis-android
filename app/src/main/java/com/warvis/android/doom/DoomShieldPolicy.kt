@@ -31,6 +31,8 @@ internal object DoomShieldPolicy {
     private val blockedApps = mapOf(
         "com.instagram.android" to "Instagram",
         "com.google.android.youtube" to "YouTube",
+        "com.twitter.android" to "X",
+        "com.quora.android" to "Quora",
     )
 
     private val blockedDomains = mapOf(
@@ -43,6 +45,15 @@ internal object DoomShieldPolicy {
         "www.youtube.com" to "youtube.com",
         "m.youtube.com" to "youtube.com",
         "youtu.be" to "youtube.com",
+        "x.com" to "x.com",
+        "www.x.com" to "x.com",
+        "mobile.x.com" to "x.com",
+        "twitter.com" to "x.com",
+        "www.twitter.com" to "x.com",
+        "mobile.twitter.com" to "x.com",
+        "quora.com" to "quora.com",
+        "www.quora.com" to "quora.com",
+        "m.quora.com" to "quora.com",
     )
 
     fun nativeAppTarget(packageName: String): DoomShieldTarget? {
@@ -71,16 +82,23 @@ internal object DoomShieldPolicy {
 
         if (text.length > MAX_TEXT_TO_SCAN) return null
 
-        return blockedDomains.keys.firstOrNull { domain ->
-            text == domain ||
-                text.contains("://$domain") ||
-                text.contains("www.$domain") ||
-                text.contains(" $domain") ||
-                text.contains("$domain/") ||
-                text.contains("$domain?") ||
-                text.contains("$domain#")
-        }
+        return blockedDomains.keys.firstOrNull { domain -> text.containsDomain(domain) }
     }
+
+    private fun String.containsDomain(domain: String): Boolean {
+        var index = indexOf(domain)
+        while (index >= 0) {
+            val beforeIsBoundary = index == 0 || this[index - 1].isDomainBoundary()
+            val afterIndex = index + domain.length
+            val afterIsBoundary = afterIndex == length || this[afterIndex].isDomainBoundary()
+            if (beforeIsBoundary && afterIsBoundary) return true
+            index = indexOf(domain, startIndex = index + 1)
+        }
+        return false
+    }
+
+    private fun Char.isDomainBoundary(): Boolean =
+        !isLetterOrDigit() && this != '-' && this != '_' && this != '.'
 
     private fun browserLabel(packageName: String): String = when (packageName) {
         "com.android.chrome", "com.chrome.beta", "com.chrome.dev" -> "Chrome"

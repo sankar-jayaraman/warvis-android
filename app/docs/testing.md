@@ -36,11 +36,11 @@ After connecting an emulator or Android device:
 11. Open Today and tap **Enable in Accessibility Settings**.
 12. Enable **WARVIS Doom Shield**.
 13. Open Chrome or another supported browser.
-14. Navigate to `facebook.com`, `instagram.com`, or `youtube.com`.
+14. Navigate to `facebook.com`, `instagram.com`, `youtube.com`, `x.com`, `twitter.com`, or `quora.com`.
 15. Confirm the Doom Shield intervention screen appears.
 16. Tap **Continue for 5 minutes**.
 17. Confirm the same site does not immediately re-trigger Doom Shield.
-18. Open the Instagram app or YouTube app.
+18. Open the Instagram, YouTube, X, or Quora app.
 19. Confirm Doom Shield appears for each app when the 5-minute grace period is not active.
 
 ## Future automated tests

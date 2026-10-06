@@ -45,6 +45,8 @@ Each screen receives `WarvisState` and callbacks. Screens do not mutate state di
 
 - Instagram app package: `com.instagram.android`
 - YouTube app package: `com.google.android.youtube`
-- Browser domains: `facebook.com`, `instagram.com`, `youtube.com`, and common mobile/short aliases
+- X app package: `com.twitter.android`
+- Quora app package: `com.quora.android`
+- Browser domains: `facebook.com`, `instagram.com`, `youtube.com`, `x.com`, `twitter.com`, `quora.com`, and common mobile/short aliases
 
 `DoomShieldPolicy` centralizes blocked targets and the 5-minute grace-period persistence used when the user chooses **Continue for 5 minutes**.

@@ -41,7 +41,7 @@ No network, backend, account, or cloud sync is used.
 
 ## Doom Shield
 
-Doom Shield is an opt-in Android Accessibility Service. After the user enables it in Android Accessibility settings, it detects blocked native apps such as Instagram and YouTube, and scans supported browser windows for blocked domains such as `facebook.com`, `instagram.com`, and `youtube.com`. Matching happens locally and full URLs are not stored.
+Doom Shield is an opt-in Android Accessibility Service. After the user enables it in Android Accessibility settings, it detects blocked native apps such as Instagram, YouTube, X, and Quora, and scans supported browser windows for their blocked domains. Matching happens locally and full URLs are not stored.
 
 WARVIS immediately opens Amazon Kindle when a blocked target is detected. If Kindle is unavailable, WARVIS opens its Google Play listing. Successful Kindle handoffs are stored locally as timestamped events; target keys are retained for diagnostics, but full browser URLs are never stored.
 

@@ -50,6 +50,8 @@ Blocked native apps:
 
 - Instagram (`com.instagram.android`)
 - YouTube (`com.google.android.youtube`)
+- X (`com.twitter.android`)
+- Quora (`com.quora.android`)
 
 Blocked browser domains:
 
@@ -62,6 +64,15 @@ Blocked browser domains:
 - `www.youtube.com`
 - `m.youtube.com`
 - `youtu.be`
+- `x.com`
+- `www.x.com`
+- `mobile.x.com`
+- `twitter.com`
+- `www.twitter.com`
+- `mobile.twitter.com`
+- `quora.com`
+- `www.quora.com`
+- `m.quora.com`
 
 When a blocked target is detected, the service immediately opens Amazon Kindle. Android's package-visibility declaration allows WARVIS to locate Kindle's launch activity. If Kindle is unavailable, the service opens its Google Play listing instead.
 
