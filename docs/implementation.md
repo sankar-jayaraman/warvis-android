@@ -1,6 +1,6 @@
 # WARVIS Implementation Notes
 
-**Last Updated:** 2026-09-19
+**Last Updated:** 2026-10-15
 
 ## Project layout
 
@@ -18,6 +18,12 @@ app/src/main/java/com/warvis/android
 │   ├── DoomShieldWeeklyReportManager.kt
 │   ├── DoomShieldWeeklyReportReceiver.kt
 │   └── DoomShieldInterventionActivity.kt
+├── taskratchet
+│   ├── TaskRatchetClient.kt
+│   ├── TaskRatchetCredentialStore.kt
+│   ├── TaskRatchetConfigurationRepository.kt
+│   ├── TaskRatchetAttemptRepository.kt
+│   └── TaskRatchetPaymentCoordinator.kt
 └── ui
     ├── WarvisApp.kt
     ├── components/WarvisComponents.kt
@@ -79,6 +85,11 @@ When a blocked target is detected, the service immediately opens Amazon Kindle. 
 Each successful Kindle handoff is recorded in app-private `SharedPreferences` with its timestamp and target key. `DoomShieldWeeklyReportManager` schedules an inexact repeating alarm for Sunday at 19:00 local time. The receiver compares Monday-to-Sunday handoffs with the preceding week, sends a progress notification, and removes events older than the comparison window.
 
 The existing 30-second per-target cooldown prevents repeated accessibility events from creating duplicate redirects. The feature does not store full URLs and does not send browser text or event history to any server.
+
+Paid overrides and WARVIS-originated disable requests use TaskRatchet. The API key is validated
+before encrypted local storage. Dry-run is the default; live mode is separately acknowledged.
+Each attempt uses a durable request ID before network access, and retries reuse it until the
+purpose-specific benefit is granted. TaskRatchet receives only bounded canonical target notes.
 
 ## Design tradeoff
 

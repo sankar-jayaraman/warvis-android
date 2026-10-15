@@ -1,6 +1,6 @@
 # WARVIS Architecture
 
-**Last Updated:** 2026-09-19
+**Last Updated:** 2026-10-15
 
 WARVIS is a single-module native Android app.
 
@@ -37,21 +37,33 @@ The repository is the source of truth for the MVP. It starts from seeded v4 plan
 - knowledge-ring scores
 - active career stage
 
-No network, backend, account, or cloud sync is used.
+The career-plan repository remains local-only. TaskRatchet is the sole network integration and is
+used only for payment-gated Doom Shield actions; there is no WARVIS backend or cloud sync.
 
 ## Doom Shield
 
 Doom Shield is an opt-in Android Accessibility Service. After the user enables it in Android Accessibility settings, it detects blocked native apps such as Instagram, YouTube, X, and Quora, and scans supported browser windows for their blocked domains. Matching happens locally and full URLs are not stored.
 
 The Today card reflects the actual service status on app resume. Enabling opens Accessibility
-settings directly. A WARVIS-originated disable action uses a separate simulated 25 kr commitment
-screen with a 10-second cooldown, then consumes a short-lived one-shot disable authorization before
-opening component-specific Accessibility details (falling back to generic settings). Disabling
-remains in effect until manual re-enable; it does not create a 15-minute target entitlement.
+settings directly. A WARVIS-originated disable action uses a TaskRatchet-gated screen with a
+10-second cooldown, then consumes a short-lived one-shot disable authorization before opening
+component-specific Accessibility details (falling back to generic settings). Blocked-target
+overrides use the same payment provider but create only a target-specific 15-minute entitlement.
+The exact amount is US$4.00 / 400 cents, described as roughly 25-28 DKK with bank conversion and FX
+fees varying. Dry-run is default; live charging requires validated credentials, a confirmed payment
+method, and explicit acknowledgement.
+
+The personal TaskRatchet key is AES/GCM-encrypted using a non-exportable Android Keystore key.
+Only ciphertext and IV are stored in private preferences, and TaskRatchet preferences are excluded
+from backup/device transfer. Every attempt is persisted before the request with a stable idempotency
+ID and is scoped by purpose plus target. Remote success is persisted before granting the benefit;
+confirmed-but-incomplete attempts remain recoverable and are cleared only after benefit success.
 
 This local route is not tamper-proof. Once disabled, the Accessibility Service cannot enforce or
 re-enable itself. Force-stop, uninstall, ADB, safe mode, and OEM Settings paths can bypass it.
-Robust enforcement would require a backend heartbeat and real payment/authorization.
+Android Keystore protects data at rest but not an unlocked, rooted, compromised, or tampered device.
+Robust reconciliation and enforcement would require a backend heartbeat; this version intentionally
+has no backend.
 
 WARVIS immediately opens Amazon Kindle when a blocked target is detected. If Kindle is unavailable, WARVIS opens its Google Play listing. Successful Kindle handoffs are stored locally as timestamped events; target keys are retained for diagnostics, but full browser URLs are never stored.
 

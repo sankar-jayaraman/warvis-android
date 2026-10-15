@@ -34,6 +34,7 @@ internal fun TodayScreen(
     bedtimeEnabled: Boolean,
     onToggleBedtime: (Boolean) -> Unit,
     onOpenNightExemptions: () -> Unit,
+    onOpenTaskRatchetSetup: () -> Unit,
     doomShieldEnabled: Boolean,
     onDoomShieldAction: () -> DoomShieldSettingsLaunchResult?,
 ) {
@@ -104,8 +105,8 @@ internal fun TodayScreen(
                 )
                 Text(
                     text = "Requires Android Accessibility permission. Matching happens locally; " +
-                        "WARVIS does not store full URLs. A confirmed dry run unlocks only that " +
-                        "target for 15 minutes.",
+                        "WARVIS does not store full URLs. TaskRatchet gates target-specific " +
+                        "15-minute overrides and requests to disable Doom Shield.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -149,6 +150,9 @@ internal fun TodayScreen(
                 }
                 Button(onClick = onOpenNightExemptions) {
                     Text("Review night app exemptions")
+                }
+                Button(onClick = onOpenTaskRatchetSetup) {
+                    Text("Set up TaskRatchet payments")
                 }
             }
 

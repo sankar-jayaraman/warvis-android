@@ -1,6 +1,6 @@
 # Android App Implementation
 
-**Last Updated:** 2026-06-10
+**Last Updated:** 2026-10-15
 
 ## State model
 
@@ -30,12 +30,14 @@ It also computes:
 
 ## UI implementation
 
-The UI is intentionally deterministic:
+The career-plan UI is intentionally deterministic:
 
 - No LLM calls.
-- No network calls.
 - No accounts.
 - No external storage.
+
+TaskRatchet is the only network boundary. Its client uses `HttpURLConnection` on `Dispatchers.IO`,
+HTTPS-only URLs, bounded timeouts, typed result mapping, and never logs or returns the API key.
 
 Each screen receives `WarvisState` and callbacks. Screens do not mutate state directly.
 
@@ -49,4 +51,7 @@ Each screen receives `WarvisState` and callbacks. Screens do not mutate state di
 - Quora app package: `com.quora.android`
 - Browser domains: `facebook.com`, `instagram.com`, `youtube.com`, `x.com`, `twitter.com`, `quora.com`, and common mobile/short aliases
 
-`DoomShieldPolicy` centralizes blocked targets and the 5-minute grace-period persistence used when the user chooses **Continue for 5 minutes**.
+`DoomShieldPolicy` centralizes blocked targets and the 15-minute target entitlement. TaskRatchet
+configuration defaults to dry-run. The coordinator persists an idempotent attempt before calling
+TaskRatchet, persists remote success before granting an entitlement or disable authorization, and
+keeps confirmed attempts for recovery when local follow-through fails.

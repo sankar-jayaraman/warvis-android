@@ -24,6 +24,8 @@ import com.warvis.android.data.WarvisRepository
 import com.warvis.android.doom.DoomShieldControlAction
 import com.warvis.android.doom.DoomShieldControlPolicy
 import com.warvis.android.doom.DoomShieldSettingsGateway
+import com.warvis.android.taskratchet.TaskRatchetConfigurationRepository
+import com.warvis.android.taskratchet.TaskRatchetPaymentCoordinator
 import com.warvis.android.ui.backlog.BacklogScreen
 import com.warvis.android.ui.doom.DoomShieldDisableCommitmentScreen
 import com.warvis.android.ui.doom.NightExemptionsScreen
@@ -32,6 +34,7 @@ import com.warvis.android.ui.journey.JourneyMapScreen
 import com.warvis.android.ui.knowledge.KnowledgeRingsScreen
 import com.warvis.android.ui.sprint.SprintBoardScreen
 import com.warvis.android.ui.today.TodayScreen
+import com.warvis.android.ui.taskratchet.TaskRatchetSetupScreen
 
 @Composable
 internal fun WarvisApp(
@@ -47,17 +50,32 @@ internal fun WarvisApp(
     val backlogState by backlogRepository.state.collectAsStateWithLifecycle()
     val bedtimeRepository = remember { BedtimeRepository(applicationContext) }
     val bedtimeEnabled by bedtimeRepository.enabled.collectAsStateWithLifecycle()
+    val taskRatchetRepository = remember {
+        TaskRatchetConfigurationRepository(applicationContext)
+    }
+    val taskRatchetConfiguration by
+        taskRatchetRepository.state.collectAsStateWithLifecycle()
+    val taskRatchetPaymentCoordinator = remember {
+        TaskRatchetPaymentCoordinator(
+            context = applicationContext,
+            configurationRepository = taskRatchetRepository,
+        )
+    }
     var destination by rememberSaveable {
         mutableStateOf(destinationRequest?.destination ?: WarvisDestination.Today)
     }
     var showingNightExemptions by rememberSaveable { mutableStateOf(false) }
     var showingDisableCommitment by rememberSaveable { mutableStateOf(false) }
+    var showingTaskRatchetSetup by rememberSaveable {
+        mutableStateOf(destinationRequest?.showTaskRatchetSetup == true)
+    }
     val settingsGateway = remember(context) { DoomShieldSettingsGateway(context) }
 
     LaunchedEffect(destinationRequest?.id) {
         destinationRequest?.let {
             showingNightExemptions = false
             showingDisableCommitment = false
+            showingTaskRatchetSetup = it.showTaskRatchetSetup
             destination = it.destination
         }
     }
@@ -69,7 +87,10 @@ internal fun WarvisApp(
     }
 
     BackHandler(
-        enabled = safeExitToHome && !showingNightExemptions && !showingDisableCommitment,
+        enabled = safeExitToHome &&
+            !showingNightExemptions &&
+            !showingDisableCommitment &&
+            !showingTaskRatchetSetup,
     ) {
         context.startActivity(
             Intent(Intent.ACTION_MAIN)
@@ -80,7 +101,11 @@ internal fun WarvisApp(
 
     Scaffold(
         bottomBar = {
-            if (!showingNightExemptions && !showingDisableCommitment) {
+            if (
+                !showingNightExemptions &&
+                !showingDisableCommitment &&
+                !showingTaskRatchetSetup
+            ) {
                 NavigationBar {
                     WarvisDestination.entries.forEach { item ->
                         NavigationBarItem(
@@ -95,10 +120,22 @@ internal fun WarvisApp(
         },
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
-            if (showingDisableCommitment) {
+            if (showingTaskRatchetSetup) {
+                TaskRatchetSetupScreen(
+                    configuration = taskRatchetConfiguration,
+                    repository = taskRatchetRepository,
+                    onBack = { showingTaskRatchetSetup = false },
+                )
+            } else if (showingDisableCommitment) {
                 DoomShieldDisableCommitmentScreen(
                     onCancel = { showingDisableCommitment = false },
                     onOpenAuthorizedSettings = settingsGateway::openForAuthorizedDisable,
+                    paymentCoordinator = taskRatchetPaymentCoordinator,
+                    configuration = taskRatchetConfiguration,
+                    onOpenTaskRatchetSetup = {
+                        showingDisableCommitment = false
+                        showingTaskRatchetSetup = true
+                    },
                 )
             } else if (showingNightExemptions) {
                 NightExemptionsScreen(onBack = { showingNightExemptions = false })
@@ -109,6 +146,7 @@ internal fun WarvisApp(
                     bedtimeEnabled = bedtimeEnabled,
                     onToggleBedtime = bedtimeRepository::setEnabled,
                     onOpenNightExemptions = { showingNightExemptions = true },
+                    onOpenTaskRatchetSetup = { showingTaskRatchetSetup = true },
                     doomShieldEnabled = doomShieldEnabled,
                     onDoomShieldAction = {
                         when (DoomShieldControlPolicy.decide(doomShieldEnabled).action) {

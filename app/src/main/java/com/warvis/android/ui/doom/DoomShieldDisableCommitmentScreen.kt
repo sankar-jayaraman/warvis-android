@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -33,23 +34,48 @@ import androidx.compose.ui.unit.dp
 import com.warvis.android.doom.DoomShieldDisableAuthorization
 import com.warvis.android.doom.DoomShieldPolicy
 import com.warvis.android.doom.DoomShieldSettingsLaunchResult
+import com.warvis.android.taskratchet.TASK_RATCHET_AMOUNT_LABEL
+import com.warvis.android.taskratchet.TaskRatchetConfiguration
+import com.warvis.android.taskratchet.TaskRatchetMode
+import com.warvis.android.taskratchet.TaskRatchetPaymentCoordinator
+import com.warvis.android.taskratchet.TaskRatchetPaymentResult
+import com.warvis.android.taskratchet.TaskRatchetPurpose
+import com.warvis.android.taskratchet.taskRatchetNote
+import com.warvis.android.taskratchet.userMessage
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.max
 
 @Composable
 internal fun DoomShieldDisableCommitmentScreen(
     onCancel: () -> Unit,
     onOpenAuthorizedSettings: (String) -> DoomShieldSettingsLaunchResult,
+    paymentCoordinator: TaskRatchetPaymentCoordinator,
+    configuration: TaskRatchetConfiguration,
+    onOpenTaskRatchetSetup: () -> Unit,
 ) {
     BackHandler(onBack = onCancel)
+    val scope = rememberCoroutineScope()
     var coolingOffStartedAtMillis by rememberSaveable { mutableStateOf<Long?>(null) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    var paymentInProgress by remember { mutableStateOf(false) }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
     val remainingMillis = coolingOffStartedAtMillis?.let { startedAt ->
         max(0L, DoomShieldPolicy.PAID_OVERRIDE_COOLING_OFF_MILLIS - (nowMillis - startedAt))
     } ?: DoomShieldPolicy.PAID_OVERRIDE_COOLING_OFF_MILLIS
     val remainingSeconds = (remainingMillis + 999L) / 1_000L
     val canConfirm = coolingOffStartedAtMillis != null && remainingMillis == 0L
+    val hasConfirmedRecovery = paymentCoordinator.hasConfirmedAttempt(
+        TaskRatchetPurpose.DoomShieldDisable,
+        null,
+    )
+    val unresolvedMode = paymentCoordinator.unresolvedAttemptMode(
+        TaskRatchetPurpose.DoomShieldDisable,
+        null,
+    )
+    val displayMode = unresolvedMode ?: configuration.mode
+    val canSubmit = configuration.canCharge || hasConfirmedRecovery
 
     LaunchedEffect(coolingOffStartedAtMillis) {
         val startedAtMillis = coolingOffStartedAtMillis ?: return@LaunchedEffect
@@ -77,8 +103,12 @@ internal fun DoomShieldDisableCommitmentScreen(
         )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            "This deliberate-payment step simulates a ${DoomShieldPolicy.PAID_OVERRIDE_PRICE_KR} kr " +
-                "commitment. No real payment or charge occurs.",
+            "This deliberate-payment step uses TaskRatchet. " +
+                if (displayMode == TaskRatchetMode.Live) {
+                    "$TASK_RATCHET_AMOUNT_LABEL will be charged immediately after confirmation."
+                } else {
+                    "Dry-run mode is active; TaskRatchet will validate the request without charging."
+                },
             style = MaterialTheme.typography.bodyLarge,
         )
         Spacer(modifier = Modifier.height(12.dp))
@@ -97,11 +127,48 @@ internal fun DoomShieldDisableCommitmentScreen(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    "Simulated commitment: ${DoomShieldPolicy.PAID_OVERRIDE_PRICE_KR} kr",
+                    if (displayMode == TaskRatchetMode.Live) {
+                        "Live TaskRatchet charge: $TASK_RATCHET_AMOUNT_LABEL"
+                    } else {
+                        "TaskRatchet dry run: $TASK_RATCHET_AMOUNT_LABEL"
+                    },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
-                Text("No money will be charged.")
+                Text(
+                    if (displayMode == TaskRatchetMode.Live) {
+                        "Direct charges are captured immediately."
+                    } else {
+                        "No money will be charged in dry-run mode."
+                    },
+                )
+                if (hasConfirmedRecovery) {
+                    Text(
+                        "A previously confirmed TaskRatchet attempt is ready for local recovery. " +
+                            "Retrying will not create a new charge.",
+                        fontWeight = FontWeight.Bold,
+                    )
+                } else if (unresolvedMode != null) {
+                    Text(
+                        "An unresolved attempt will reuse its original request ID and " +
+                            "${if (displayMode == TaskRatchetMode.Live) "live" else "dry-run"} mode.",
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                if (!configuration.canCharge && !hasConfirmedRecovery) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "TaskRatchet is not ready or has no confirmed payment method.",
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                OutlinedButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onOpenTaskRatchetSetup,
+                ) {
+                    Text("Open TaskRatchet setup")
+                }
                 Spacer(modifier = Modifier.height(12.dp))
                 if (coolingOffStartedAtMillis == null) {
                     OutlinedButton(
@@ -128,27 +195,78 @@ internal fun DoomShieldDisableCommitmentScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = canConfirm,
+                        enabled = canConfirm && !paymentInProgress && canSubmit,
                         onClick = {
-                            val authorization = DoomShieldDisableAuthorization.issue()
-                            errorMessage = when (
-                                onOpenAuthorizedSettings(authorization.token)
-                            ) {
-                                DoomShieldSettingsLaunchResult.Opened -> null
-                                DoomShieldSettingsLaunchResult.AuthorizationExpired ->
-                                    "The disable authorization expired. Confirm again to retry."
-                                DoomShieldSettingsLaunchResult.AuthorizationAlreadyConsumed,
-                                DoomShieldSettingsLaunchResult.AuthorizationWrongPurpose,
-                                DoomShieldSettingsLaunchResult.AuthorizationNotFound ->
-                                    "WARVIS rejected the disable authorization. Confirm again to retry."
-                                DoomShieldSettingsLaunchResult.LaunchFailed ->
-                                    "WARVIS could not open Android Accessibility settings. " +
-                                        "Doom Shield remains enabled."
+                            paymentInProgress = true
+                            errorMessage = null
+                            statusMessage = "Confirming with TaskRatchet…"
+                            scope.launch {
+                                var launchResult: DoomShieldSettingsLaunchResult? = null
+                                when (
+                                    val result = paymentCoordinator.execute(
+                                        purpose = TaskRatchetPurpose.DoomShieldDisable,
+                                        targetKey = null,
+                                        note = taskRatchetNote(
+                                            TaskRatchetPurpose.DoomShieldDisable,
+                                            null,
+                                        ),
+                                        grantBenefit = {
+                                            val authorization =
+                                                DoomShieldDisableAuthorization.issue()
+                                            onOpenAuthorizedSettings(authorization.token)
+                                                .also { launchResult = it } ==
+                                                DoomShieldSettingsLaunchResult.Opened
+                                        },
+                                    )
+                                ) {
+                                    is TaskRatchetPaymentResult.Failure -> {
+                                        errorMessage = result.kind.userMessage()
+                                        statusMessage = null
+                                    }
+                                    is TaskRatchetPaymentResult.BenefitPending -> {
+                                        errorMessage = when (launchResult) {
+                                            DoomShieldSettingsLaunchResult.LaunchFailed ->
+                                                "Payment was confirmed, but Android Settings " +
+                                                    "did not open. Retry to recover without " +
+                                                    "creating a new charge."
+                                            else ->
+                                                "Payment was confirmed, but WARVIS could not " +
+                                                    "complete the disable authorization. Retry " +
+                                                    "to recover without a new charge."
+                                        }
+                                        statusMessage = null
+                                    }
+                                    TaskRatchetPaymentResult.AlreadyInProgress -> {
+                                        errorMessage =
+                                            "This TaskRatchet request is already being completed. " +
+                                                "Wait for it to finish."
+                                        statusMessage = null
+                                    }
+                                    is TaskRatchetPaymentResult.Granted -> {
+                                        errorMessage = null
+                                        statusMessage = if (result.dryRun) {
+                                            "Dry-run confirmed. Opening Accessibility settings."
+                                        } else {
+                                            "Live charge confirmed. Opening Accessibility settings."
+                                        }
+                                    }
+                                }
+                                paymentInProgress = false
                             }
                         },
                     ) {
-                        Text("Confirm — open settings to disable")
+                        Text(
+                            if (paymentInProgress) {
+                                "Confirming…"
+                            } else {
+                                "Confirm ${if (displayMode == TaskRatchetMode.Live) "live charge" else "dry run"} — open settings"
+                            },
+                        )
                     }
+                }
+                statusMessage?.let { message ->
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(message, fontWeight = FontWeight.Bold)
                 }
                 errorMessage?.let { message ->
                     Spacer(modifier = Modifier.height(12.dp))

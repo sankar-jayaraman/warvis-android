@@ -29,7 +29,6 @@ internal data class NightExemptionSelection(
 }
 
 internal object DoomShieldPolicy {
-    const val PAID_OVERRIDE_PRICE_KR = 25
     const val PAID_OVERRIDE_DURATION_MINUTES = 15
     const val PAID_OVERRIDE_COOLING_OFF_MILLIS = 10_000L
     const val GRACE_PERIOD_MILLIS = PAID_OVERRIDE_DURATION_MINUTES * 60 * 1000L

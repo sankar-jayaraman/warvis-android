@@ -38,9 +38,21 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.warvis.android.MainActivity
+import com.warvis.android.taskratchet.TASK_RATCHET_AMOUNT_LABEL
+import com.warvis.android.taskratchet.TaskRatchetConfiguration
+import com.warvis.android.taskratchet.TaskRatchetConfigurationRepository
+import com.warvis.android.taskratchet.TaskRatchetMode
+import com.warvis.android.taskratchet.TaskRatchetPaymentCoordinator
+import com.warvis.android.taskratchet.TaskRatchetPaymentResult
+import com.warvis.android.taskratchet.TaskRatchetPurpose
+import com.warvis.android.taskratchet.taskRatchetNote
+import com.warvis.android.taskratchet.userMessage
 import com.warvis.android.ui.WarvisDestinationContract
 import com.warvis.android.ui.theme.WarvisTheme
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.max
 
 class DoomShieldInterventionActivity : ComponentActivity() {
@@ -49,6 +61,10 @@ class DoomShieldInterventionActivity : ComponentActivity() {
     private var sourceLabel: String = "your phone"
     private var sourcePackage: String? = null
     private var confirmationInProgress = false
+    private lateinit var taskRatchetConfigurationRepository:
+        TaskRatchetConfigurationRepository
+    private lateinit var taskRatchetPaymentCoordinator: TaskRatchetPaymentCoordinator
+    private var paymentStatus by mutableStateOf<PaymentStatus>(PaymentStatus.Idle)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,6 +73,13 @@ class DoomShieldInterventionActivity : ComponentActivity() {
         targetLabel = intent.getStringExtra(EXTRA_TARGET_LABEL) ?: targetLabel
         sourceLabel = intent.getStringExtra(EXTRA_SOURCE_LABEL) ?: sourceLabel
         sourcePackage = intent.getStringExtra(EXTRA_SOURCE_PACKAGE)
+        taskRatchetConfigurationRepository = TaskRatchetConfigurationRepository(
+            applicationContext,
+        )
+        taskRatchetPaymentCoordinator = TaskRatchetPaymentCoordinator(
+            context = applicationContext,
+            configurationRepository = taskRatchetConfigurationRepository,
+        )
         val suggestionTitle = intent.getStringExtra(EXTRA_SUGGESTION_TITLE)
         val suggestionBucket = intent.getStringExtra(EXTRA_SUGGESTION_BUCKET)
         val isBedtime = intent.getBooleanExtra(EXTRA_IS_BEDTIME, false)
@@ -69,6 +92,8 @@ class DoomShieldInterventionActivity : ComponentActivity() {
         )
 
         setContent {
+            val taskRatchetConfiguration by
+                taskRatchetConfigurationRepository.state.collectAsStateWithLifecycle()
             WarvisTheme {
                 DoomShieldInterventionScreen(
                     targetLabel = targetLabel,
@@ -78,8 +103,21 @@ class DoomShieldInterventionActivity : ComponentActivity() {
                     isBedtime = isBedtime,
                     onOpenKindle = ::openKindle,
                     onOpenBacklog = ::openBacklog,
+                    onOpenTaskRatchetSetup = ::openTaskRatchetSetup,
                     onGoHome = ::goHome,
-                    onConfirmDryRun = ::confirmDryRun,
+                    taskRatchetConfiguration = taskRatchetConfiguration,
+                    paymentStatus = paymentStatus,
+                    hasConfirmedRecovery =
+                        taskRatchetPaymentCoordinator.hasConfirmedAttempt(
+                            TaskRatchetPurpose.BlockedTargetOverride,
+                            targetKey,
+                        ),
+                    unresolvedAttemptMode =
+                        taskRatchetPaymentCoordinator.unresolvedAttemptMode(
+                            TaskRatchetPurpose.BlockedTargetOverride,
+                            targetKey,
+                        ),
+                    onConfirmPayment = ::confirmPayment,
                 )
             }
         }
@@ -130,20 +168,73 @@ class DoomShieldInterventionActivity : ComponentActivity() {
         finish()
     }
 
-    private fun confirmDryRun(): Boolean {
-        if (confirmationInProgress) return false
-        val key = targetKey ?: return false
-        confirmationInProgress = true
+    private fun openTaskRatchetSetup() {
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .putExtra(
+                    WarvisDestinationContract.EXTRA_DESTINATION,
+                    WarvisDestinationContract.TASK_RATCHET_SETUP,
+                )
+                .putExtra(WarvisDestinationContract.EXTRA_SAFE_EXIT_TO_HOME, true)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        )
+        finish()
+    }
 
-        return when (DoomShieldGracePeriod.startIfInactive(this, key)) {
-            DoomShieldGracePeriodStartResult.AlreadyActive,
-            DoomShieldGracePeriodStartResult.Persisted -> {
-                reopenOriginalTarget()
-                true
+    private fun confirmPayment() {
+        if (confirmationInProgress) return
+        val key = targetKey ?: return
+        if (
+            DoomShieldGracePeriod.isActive(this, key) &&
+            !taskRatchetPaymentCoordinator.hasUnresolvedAttempt(
+                TaskRatchetPurpose.BlockedTargetOverride,
+                key,
+            )
+        ) {
+            reopenOriginalTarget()
+            return
+        }
+        confirmationInProgress = true
+        paymentStatus = PaymentStatus.InProgress
+        lifecycleScope.launch {
+            when (
+                val result = taskRatchetPaymentCoordinator.execute(
+                    purpose = TaskRatchetPurpose.BlockedTargetOverride,
+                    targetKey = key,
+                    note = taskRatchetNote(
+                        TaskRatchetPurpose.BlockedTargetOverride,
+                        key,
+                    ),
+                    grantBenefit = {
+                        when (DoomShieldGracePeriod.startIfInactive(this@DoomShieldInterventionActivity, key)) {
+                            DoomShieldGracePeriodStartResult.AlreadyActive,
+                            DoomShieldGracePeriodStartResult.Persisted -> true
+                            DoomShieldGracePeriodStartResult.PersistenceFailed -> false
+                        }
+                    },
+                )
+            ) {
+                is TaskRatchetPaymentResult.Granted -> {
+                    paymentStatus = PaymentStatus.Success(result.dryRun)
+                    reopenOriginalTarget()
+                }
+                is TaskRatchetPaymentResult.BenefitPending -> {
+                    paymentStatus = PaymentStatus.Error(
+                        "TaskRatchet confirmed this attempt, but WARVIS could not finish the " +
+                            "15-minute entitlement. Retry to recover without a new charge.",
+                    )
+                }
+                TaskRatchetPaymentResult.AlreadyInProgress -> {
+                    paymentStatus = PaymentStatus.Error(
+                        "This TaskRatchet request is already being completed. Wait for it to finish.",
+                    )
+                }
+                is TaskRatchetPaymentResult.Failure -> {
+                    paymentStatus = PaymentStatus.Error(result.kind.userMessage())
+                }
             }
-            DoomShieldGracePeriodStartResult.PersistenceFailed -> {
+            if (paymentStatus !is PaymentStatus.Success) {
                 confirmationInProgress = false
-                false
             }
         }
     }
@@ -175,6 +266,13 @@ class DoomShieldInterventionActivity : ComponentActivity() {
         const val EXTRA_SUGGESTION_BUCKET = "com.warvis.android.doom.EXTRA_SUGGESTION_BUCKET"
         const val EXTRA_IS_BEDTIME = "com.warvis.android.doom.EXTRA_IS_BEDTIME"
     }
+
+    internal sealed interface PaymentStatus {
+        data object Idle : PaymentStatus
+        data object InProgress : PaymentStatus
+        data class Success(val dryRun: Boolean) : PaymentStatus
+        data class Error(val message: String) : PaymentStatus
+    }
 }
 
 @Composable
@@ -186,8 +284,13 @@ private fun DoomShieldInterventionScreen(
     isBedtime: Boolean,
     onOpenKindle: () -> Unit,
     onOpenBacklog: () -> Unit,
+    onOpenTaskRatchetSetup: () -> Unit,
     onGoHome: () -> Unit,
-    onConfirmDryRun: () -> Boolean,
+    taskRatchetConfiguration: TaskRatchetConfiguration,
+    paymentStatus: DoomShieldInterventionActivity.PaymentStatus,
+    hasConfirmedRecovery: Boolean,
+    unresolvedAttemptMode: TaskRatchetMode?,
+    onConfirmPayment: () -> Unit,
 ) {
     var coolingOffStartedAtMillis by rememberSaveable { mutableStateOf<Long?>(null) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -196,7 +299,7 @@ private fun DoomShieldInterventionScreen(
     } ?: DoomShieldPolicy.PAID_OVERRIDE_COOLING_OFF_MILLIS
     val remainingSeconds = (remainingMillis + 999L) / 1_000L
     val canConfirm = coolingOffStartedAtMillis != null && remainingMillis == 0L
-    var confirmationError by rememberSaveable { mutableStateOf<String?>(null) }
+    val displayMode = unresolvedAttemptMode ?: taskRatchetConfiguration.mode
 
     LaunchedEffect(coolingOffStartedAtMillis) {
         val startedAtMillis = coolingOffStartedAtMillis ?: return@LaunchedEffect
@@ -290,7 +393,13 @@ private fun DoomShieldInterventionScreen(
                         coolingOffStartedAtMillis = nowMillis
                     },
                 ) {
-                    Text("Test 25 kr unlock")
+                    Text(
+                        if (displayMode == TaskRatchetMode.Live) {
+                            "Start $TASK_RATCHET_AMOUNT_LABEL override"
+                        } else {
+                            "Start TaskRatchet dry-run override"
+                        },
+                    )
                 }
             } else {
                 Card(
@@ -301,21 +410,60 @@ private fun DoomShieldInterventionScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "Dry-run paid override",
+                            text = if (
+                                displayMode == TaskRatchetMode.Live
+                            ) {
+                                "Live TaskRatchet override"
+                            } else {
+                                "TaskRatchet dry-run override"
+                            },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("Price: ${DoomShieldPolicy.PAID_OVERRIDE_PRICE_KR} kr")
+                        Text("Amount: $TASK_RATCHET_AMOUNT_LABEL")
                         Text(
                             "Unlock: ${DoomShieldPolicy.PAID_OVERRIDE_DURATION_MINUTES} " +
                                 "minutes for $targetLabel only",
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "No money will be charged in this test version.",
+                            text = if (
+                                displayMode == TaskRatchetMode.Live
+                            ) {
+                                "The charge is captured immediately after TaskRatchet confirms it."
+                            } else {
+                                "No money will be charged in dry-run mode."
+                            },
                             fontWeight = FontWeight.Bold,
                         )
+                        if (hasConfirmedRecovery) {
+                            Text(
+                                "A confirmed TaskRatchet attempt is ready for local recovery. " +
+                                    "Retrying will not create a new charge.",
+                                fontWeight = FontWeight.Bold,
+                            )
+                        } else if (unresolvedAttemptMode != null) {
+                            Text(
+                                "This retry reuses the original request ID and " +
+                                    "${if (displayMode == TaskRatchetMode.Live) "live" else "dry-run"} mode.",
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        if (!taskRatchetConfiguration.canCharge && !hasConfirmedRecovery) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                "TaskRatchet is not ready or has no confirmed payment method.",
+                                color = MaterialTheme.colorScheme.error,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onOpenTaskRatchetSetup,
+                        ) {
+                            Text("Open TaskRatchet setup")
+                        }
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             modifier = Modifier.semantics {
@@ -330,25 +478,30 @@ private fun DoomShieldInterventionScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                         Button(
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = canConfirm,
-                            onClick = {
-                                confirmationError = if (onConfirmDryRun()) {
-                                    null
-                                } else {
-                                    "WARVIS could not save the 15-minute unlock. " +
-                                        "The blocked target will remain closed. Please try again."
-                                }
-                            },
+                            enabled = canConfirm &&
+                                paymentStatus !is DoomShieldInterventionActivity.PaymentStatus.InProgress &&
+                                (taskRatchetConfiguration.canCharge || hasConfirmedRecovery),
+                            onClick = onConfirmPayment,
                         ) {
                             Text(
-                                "Confirm dry run — unlock " +
-                                    "${DoomShieldPolicy.PAID_OVERRIDE_DURATION_MINUTES} minutes",
+                                if (
+                                    paymentStatus is
+                                    DoomShieldInterventionActivity.PaymentStatus.InProgress
+                                ) {
+                                    "Confirming with TaskRatchet…"
+                                } else {
+                                    "Confirm ${if (displayMode == TaskRatchetMode.Live) "live charge" else "dry run"} — unlock ${DoomShieldPolicy.PAID_OVERRIDE_DURATION_MINUTES} minutes"
+                                },
                             )
                         }
-                        confirmationError?.let { error ->
+                        val error = (
+                            paymentStatus as?
+                                DoomShieldInterventionActivity.PaymentStatus.Error
+                            )?.message
+                        error?.let {
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = error,
+                                text = it,
                                 color = MaterialTheme.colorScheme.error,
                                 fontWeight = FontWeight.Bold,
                             )

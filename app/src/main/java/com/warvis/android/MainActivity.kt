@@ -70,9 +70,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleDestination(intent: Intent) {
-        val destination = WarvisDestinationContract.destinationFor(
-            intent.getStringExtra(WarvisDestinationContract.EXTRA_DESTINATION),
-        ) ?: return
+        val destinationValue =
+            intent.getStringExtra(WarvisDestinationContract.EXTRA_DESTINATION)
+        val destination = WarvisDestinationContract.destinationFor(destinationValue) ?: return
 
         safeExitToHome = intent.getBooleanExtra(
             WarvisDestinationContract.EXTRA_SAFE_EXIT_TO_HOME,
@@ -84,6 +84,8 @@ class MainActivity : ComponentActivity() {
         destinationRequest = WarvisDestinationRequest(
             id = nextDestinationRequestId,
             destination = destination,
+            showTaskRatchetSetup =
+                WarvisDestinationContract.showsTaskRatchetSetup(destinationValue),
         )
     }
 

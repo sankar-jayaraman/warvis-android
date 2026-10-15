@@ -48,7 +48,6 @@ class DoomShieldPolicyTest {
 
     @Test
     fun paidOverrideUsesExactRequestedTerms() {
-        assertEquals(25, DoomShieldPolicy.PAID_OVERRIDE_PRICE_KR)
         assertEquals(15, DoomShieldPolicy.PAID_OVERRIDE_DURATION_MINUTES)
         assertEquals(10_000L, DoomShieldPolicy.PAID_OVERRIDE_COOLING_OFF_MILLIS)
         assertEquals(15 * 60 * 1000L, DoomShieldPolicy.GRACE_PERIOD_MILLIS)

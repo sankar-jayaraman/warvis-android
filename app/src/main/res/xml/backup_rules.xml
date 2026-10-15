@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
     <include domain="sharedpref" path="warvis_backlog.xml"/>
+    <exclude domain="sharedpref" path="task_ratchet_credentials.xml"/>
+    <exclude domain="sharedpref" path="task_ratchet_configuration.xml"/>
+    <exclude domain="sharedpref" path="task_ratchet_attempts.xml"/>
 </full-backup-content>
