@@ -1,6 +1,6 @@
 # WARVIS Testing
 
-**Last Updated:** 2026-06-10
+**Last Updated:** 2026-10-15
 
 ## Current validation status
 
@@ -37,11 +37,17 @@ After connecting an emulator or Android device:
 12. Enable **WARVIS Doom Shield**.
 13. Open Chrome or another supported browser.
 14. Navigate to `facebook.com`, `instagram.com`, `youtube.com`, `x.com`, `twitter.com`, or `quora.com`.
-15. Confirm the Doom Shield intervention screen appears.
-16. Tap **Continue for 5 minutes**.
-17. Confirm the same site does not immediately re-trigger Doom Shield.
-18. Open the Instagram, YouTube, X, or Quora app.
-19. Confirm Doom Shield appears for each app when the 5-minute grace period is not active.
+15. Confirm the Doom Shield commitment screen appears instead of immediately redirecting.
+16. Tap **Open Kindle instead** and confirm Kindle opens, or its Play Store listing opens when Kindle is not installed.
+17. Reopen a blocked target and tap **Test 25 kr unlock**.
+18. Confirm the screen clearly states **25 kr**, **15 minutes**, and that no money will be charged in this test version.
+19. Confirm **Confirm dry run — unlock 15 minutes** remains disabled during the visible 10-second cooling-off countdown.
+20. Rotate the device or recreate the activity during the countdown; confirm access is not granted and the countdown does not restart.
+21. After the countdown completes, confirm the unlock and verify the original app/browser returns or reopens when possible.
+22. Confirm the same target remains accessible for 15 minutes, then becomes blocked again after expiry.
+23. While one target is unlocked, open a different blocked app/site and confirm it remains blocked.
+24. Unlock native X and confirm `x.com`/`twitter.com` aliases share the entitlement; repeat in the other direction.
+25. Tap the confirmation rapidly and confirm it does not extend the original 15-minute entitlement.
 
 ## Future automated tests
 

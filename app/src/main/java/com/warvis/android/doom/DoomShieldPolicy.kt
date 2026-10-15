@@ -9,10 +9,14 @@ internal data class DoomShieldTarget(
 )
 
 internal object DoomShieldPolicy {
-    const val GRACE_PERIOD_MILLIS = 5 * 60 * 1000L
-    const val INTERVENTION_COOLDOWN_MILLIS = 30_000L
+    const val PAID_OVERRIDE_PRICE_KR = 25
+    const val PAID_OVERRIDE_DURATION_MINUTES = 15
+    const val PAID_OVERRIDE_COOLING_OFF_MILLIS = 10_000L
+    const val GRACE_PERIOD_MILLIS = PAID_OVERRIDE_DURATION_MINUTES * 60 * 1000L
+    const val INTERVENTION_LAUNCH_DEBOUNCE_MILLIS = 1_000L
     const val MAX_NODES_TO_SCAN = 250
     const val MAX_TEXT_TO_SCAN = 500
+    private const val X_TARGET_KEY = "domain:x.com"
 
     val supportedBrowserPackages = setOf(
         "com.android.chrome",
@@ -59,7 +63,7 @@ internal object DoomShieldPolicy {
     fun nativeAppTarget(packageName: String): DoomShieldTarget? {
         val displayName = blockedApps[packageName] ?: return null
         return DoomShieldTarget(
-            key = "app:$packageName",
+            key = if (packageName == "com.twitter.android") X_TARGET_KEY else "app:$packageName",
             displayName = displayName,
             sourceLabel = displayName,
         )
@@ -112,23 +116,58 @@ internal object DoomShieldPolicy {
     }
 }
 
+internal data class DoomShieldEntitlementState(
+    private val deadlinesByTarget: Map<String, Long> = emptyMap(),
+) {
+    fun confirm(targetKey: String, nowMillis: Long): DoomShieldEntitlementState {
+        if (isActive(targetKey, nowMillis)) return this
+
+        return copy(
+            deadlinesByTarget = deadlinesByTarget + (
+                targetKey to nowMillis + DoomShieldPolicy.GRACE_PERIOD_MILLIS
+            ),
+        )
+    }
+
+    fun isActive(targetKey: String, nowMillis: Long): Boolean =
+        deadlineFor(targetKey) > nowMillis
+
+    fun deadlineFor(targetKey: String): Long = deadlinesByTarget[targetKey] ?: 0L
+}
+
 internal object DoomShieldGracePeriod {
     private const val PREFERENCES_NAME = "doom_shield_grace_periods"
     private const val GRACE_UNTIL_PREFIX = "grace_until:"
 
-    fun start(context: Context, targetKey: String, nowMillis: Long = System.currentTimeMillis()) {
-        preferences(context)
+    @Synchronized
+    fun startIfInactive(
+        context: Context,
+        targetKey: String,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Boolean {
+        val preferences = preferences(context)
+        val preferenceKey = GRACE_UNTIL_PREFIX + targetKey
+        val currentDeadlineMillis = preferences.getLong(preferenceKey, 0L)
+        val currentState = DoomShieldEntitlementState(
+            deadlinesByTarget = mapOf(targetKey to currentDeadlineMillis),
+        )
+        val updatedState = currentState.confirm(targetKey, nowMillis)
+        val updatedDeadlineMillis = updatedState.deadlineFor(targetKey)
+        if (updatedDeadlineMillis == currentDeadlineMillis) return false
+
+        return preferences
             .edit()
-            .putLong(GRACE_UNTIL_PREFIX + targetKey, nowMillis + DoomShieldPolicy.GRACE_PERIOD_MILLIS)
-            .apply()
+            .putLong(preferenceKey, updatedDeadlineMillis)
+            .commit()
     }
 
     fun isActive(context: Context, targetKey: String, nowMillis: Long = System.currentTimeMillis()): Boolean {
+        val preferences = preferences(context)
         val preferenceKey = GRACE_UNTIL_PREFIX + targetKey
-        val graceUntilMillis = preferences(context).getLong(preferenceKey, 0L)
+        val graceUntilMillis = preferences.getLong(preferenceKey, 0L)
         if (graceUntilMillis <= nowMillis) {
             if (graceUntilMillis > 0L) {
-                preferences(context).edit().remove(preferenceKey).apply()
+                preferences.edit().remove(preferenceKey).apply()
             }
             return false
         }

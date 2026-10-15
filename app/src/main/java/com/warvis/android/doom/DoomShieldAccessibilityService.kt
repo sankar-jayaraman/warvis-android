@@ -1,16 +1,11 @@
 package com.warvis.android.doom
 
 import android.accessibilityservice.AccessibilityService
-import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.net.Uri
-import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
 class DoomShieldAccessibilityService : AccessibilityService() {
-    private val recentInterventions = mutableMapOf<String, Long>()
-
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
@@ -22,7 +17,7 @@ class DoomShieldAccessibilityService : AccessibilityService() {
             ?: return
 
         if (shouldIntervene(target)) {
-            redirectToKindle(target)
+            showIntervention(target, packageName)
         }
     }
 
@@ -39,54 +34,18 @@ class DoomShieldAccessibilityService : AccessibilityService() {
     private fun shouldIntervene(target: DoomShieldTarget): Boolean {
         if (DoomShieldGracePeriod.isActive(this, target.key)) return false
 
-        val now = System.currentTimeMillis()
-        val lastInterventionAtMillis = recentInterventions[target.key] ?: 0L
-        val targetWithinCooldown = now - lastInterventionAtMillis < DoomShieldPolicy.INTERVENTION_COOLDOWN_MILLIS
-
-        if (targetWithinCooldown) return false
-
-        recentInterventions[target.key] = now
-        return true
+        return DoomShieldInterventionState.tryBeginLaunch(System.currentTimeMillis())
     }
 
-    private fun redirectToKindle(target: DoomShieldTarget) {
-        val kindleIntent = packageManager.getLaunchIntentForPackage(KINDLE_PACKAGE_NAME)
-            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-
-        if (kindleIntent == null) {
-            openKindleStore()
-            return
-        }
-
-        try {
-            startActivity(kindleIntent)
-            DoomShieldSwitchLog.recordSwitch(applicationContext, target)
-        } catch (exception: ActivityNotFoundException) {
-            Log.e(TAG, "Kindle launch activity was not found", exception)
-            openKindleStore()
-        } catch (exception: SecurityException) {
-            Log.e(TAG, "Kindle launch was blocked", exception)
-            openKindleStore()
-        }
-    }
-
-    private fun openKindleStore() {
-        val marketIntent = Intent(
-            Intent.ACTION_VIEW,
-            Uri.parse("market://details?id=$KINDLE_PACKAGE_NAME"),
-        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-
-        try {
-            startActivity(marketIntent)
-        } catch (exception: ActivityNotFoundException) {
-            Log.e(TAG, "Play Store is unavailable; opening the Kindle web listing", exception)
-            startActivity(
-                Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse("https://play.google.com/store/apps/details?id=$KINDLE_PACKAGE_NAME"),
-                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        }
+    private fun showIntervention(target: DoomShieldTarget, sourcePackage: String) {
+        startActivity(
+            Intent(this, DoomShieldInterventionActivity::class.java)
+                .putExtra(DoomShieldInterventionActivity.EXTRA_TARGET_KEY, target.key)
+                .putExtra(DoomShieldInterventionActivity.EXTRA_TARGET_LABEL, target.displayName)
+                .putExtra(DoomShieldInterventionActivity.EXTRA_SOURCE_LABEL, target.sourceLabel)
+                .putExtra(DoomShieldInterventionActivity.EXTRA_SOURCE_PACKAGE, sourcePackage)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 
     private fun findBlockedDomain(root: AccessibilityNodeInfo): String? {
@@ -108,9 +67,33 @@ class DoomShieldAccessibilityService : AccessibilityService() {
 
         return null
     }
+}
 
-    companion object {
-        private const val TAG = "DoomShield"
-        private const val KINDLE_PACKAGE_NAME = "com.amazon.kindle"
+internal object DoomShieldInterventionState {
+    private var visibleActivityCount = 0
+    private var lastLaunchAtMillis = 0L
+
+    @Synchronized
+    fun tryBeginLaunch(nowMillis: Long): Boolean {
+        if (visibleActivityCount > 0) return false
+        if (
+            lastLaunchAtMillis > 0L &&
+            nowMillis - lastLaunchAtMillis < DoomShieldPolicy.INTERVENTION_LAUNCH_DEBOUNCE_MILLIS
+        ) {
+            return false
+        }
+
+        lastLaunchAtMillis = nowMillis
+        return true
+    }
+
+    @Synchronized
+    fun markVisible() {
+        visibleActivityCount += 1
+    }
+
+    @Synchronized
+    fun markHidden() {
+        visibleActivityCount = (visibleActivityCount - 1).coerceAtLeast(0)
     }
 }
