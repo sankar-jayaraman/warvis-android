@@ -43,6 +43,16 @@ No network, backend, account, or cloud sync is used.
 
 Doom Shield is an opt-in Android Accessibility Service. After the user enables it in Android Accessibility settings, it detects blocked native apps such as Instagram, YouTube, X, and Quora, and scans supported browser windows for their blocked domains. Matching happens locally and full URLs are not stored.
 
+The Today card reflects the actual service status on app resume. Enabling opens Accessibility
+settings directly. A WARVIS-originated disable action uses a separate simulated 25 kr commitment
+screen with a 10-second cooldown, then consumes a short-lived one-shot disable authorization before
+opening component-specific Accessibility details (falling back to generic settings). Disabling
+remains in effect until manual re-enable; it does not create a 15-minute target entitlement.
+
+This local route is not tamper-proof. Once disabled, the Accessibility Service cannot enforce or
+re-enable itself. Force-stop, uninstall, ADB, safe mode, and OEM Settings paths can bypass it.
+Robust enforcement would require a backend heartbeat and real payment/authorization.
+
 WARVIS immediately opens Amazon Kindle when a blocked target is detected. If Kindle is unavailable, WARVIS opens its Google Play listing. Successful Kindle handoffs are stored locally as timestamped events; target keys are retained for diagnostics, but full browser URLs are never stored.
 
 Every Sunday at 19:00 local time, WARVIS reports the number of handoffs during the current week and compares it with the previous week. The explicit goal is zero handoffs.

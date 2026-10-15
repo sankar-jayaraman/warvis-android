@@ -1,7 +1,5 @@
 package com.warvis.android.ui.today
 
-import android.content.Intent
-import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,12 +11,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.warvis.android.data.model.WarvisState
+import com.warvis.android.doom.DoomShieldSettingsLaunchResult
 import com.warvis.android.ui.components.ProgressBlock
 import com.warvis.android.ui.components.ScreenScaffold
 import com.warvis.android.ui.components.SectionTitle
@@ -26,13 +28,16 @@ import com.warvis.android.ui.components.WarvisCard
 import com.warvis.android.ui.components.WarvisOutlinedCard
 
 @Composable
-fun TodayScreen(
+internal fun TodayScreen(
     state: WarvisState,
     onToggleTask: (String) -> Unit,
     bedtimeEnabled: Boolean,
     onToggleBedtime: (Boolean) -> Unit,
+    onOpenNightExemptions: () -> Unit,
+    doomShieldEnabled: Boolean,
+    onDoomShieldAction: () -> DoomShieldSettingsLaunchResult?,
 ) {
-    val context = LocalContext.current
+    var doomShieldSettingsError by remember { mutableStateOf<String?>(null) }
 
     ScreenScaffold(
         title = "WARVIS",
@@ -93,18 +98,57 @@ fun TodayScreen(
 
             WarvisOutlinedCard {
                 SectionTitle("Doom Shield")
-                Text("Catch Facebook, Instagram, and YouTube loops, then show a WARVIS intervention before doom scrolling starts.")
                 Text(
-                    text = "Requires Android Accessibility permission. Matching happens locally; WARVIS does not store full URLs. Continue gives you 5 minutes before the next intervention.",
+                    "Catch existing Doom Shield targets all day. From 21:00 to 10:00, " +
+                        "extend the same intervention to all non-essential apps.",
+                )
+                Text(
+                    text = "Requires Android Accessibility permission. Matching happens locally; " +
+                        "WARVIS does not store full URLs. A confirmed dry run unlocks only that " +
+                        "target for 15 minutes.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Text(
+                    text = if (doomShieldEnabled) {
+                        "Status: Enabled"
+                    } else {
+                        "Status: Disabled"
+                    },
+                    color = if (doomShieldEnabled) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+                    fontWeight = FontWeight.Bold,
+                )
                 Button(
                     onClick = {
-                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        doomShieldSettingsError = when (onDoomShieldAction()) {
+                            null,
+                            DoomShieldSettingsLaunchResult.Opened -> null
+                            else -> "WARVIS could not open Android Accessibility settings. " +
+                                "Doom Shield status was not changed."
+                        }
                     },
                 ) {
-                    Text("Enable in Accessibility Settings")
+                    Text(
+                        if (doomShieldEnabled) {
+                            "Disable Doom Shield"
+                        } else {
+                            "Enable Doom Shield"
+                        },
+                    )
+                }
+                doomShieldSettingsError?.let { message ->
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Button(onClick = onOpenNightExemptions) {
+                    Text("Review night app exemptions")
                 }
             }
 

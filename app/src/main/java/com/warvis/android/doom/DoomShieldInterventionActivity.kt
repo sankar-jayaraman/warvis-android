@@ -37,6 +37,8 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.warvis.android.MainActivity
+import com.warvis.android.ui.WarvisDestinationContract
 import com.warvis.android.ui.theme.WarvisTheme
 import kotlinx.coroutines.delay
 import kotlin.math.max
@@ -75,6 +77,7 @@ class DoomShieldInterventionActivity : ComponentActivity() {
                     suggestionBucket = suggestionBucket,
                     isBedtime = isBedtime,
                     onOpenKindle = ::openKindle,
+                    onOpenBacklog = ::openBacklog,
                     onGoHome = ::goHome,
                     onConfirmDryRun = ::confirmDryRun,
                 )
@@ -114,13 +117,35 @@ class DoomShieldInterventionActivity : ComponentActivity() {
         finish()
     }
 
-    private fun confirmDryRun() {
-        if (confirmationInProgress) return
-        val key = targetKey ?: return
+    private fun openBacklog() {
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .putExtra(
+                    WarvisDestinationContract.EXTRA_DESTINATION,
+                    WarvisDestinationContract.BACKLOG,
+                )
+                .putExtra(WarvisDestinationContract.EXTRA_SAFE_EXIT_TO_HOME, true)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        )
+        finish()
+    }
+
+    private fun confirmDryRun(): Boolean {
+        if (confirmationInProgress) return false
+        val key = targetKey ?: return false
         confirmationInProgress = true
 
-        DoomShieldGracePeriod.startIfInactive(this, key)
-        reopenOriginalTarget()
+        return when (DoomShieldGracePeriod.startIfInactive(this, key)) {
+            DoomShieldGracePeriodStartResult.AlreadyActive,
+            DoomShieldGracePeriodStartResult.Persisted -> {
+                reopenOriginalTarget()
+                true
+            }
+            DoomShieldGracePeriodStartResult.PersistenceFailed -> {
+                confirmationInProgress = false
+                false
+            }
+        }
     }
 
     private fun reopenOriginalTarget() {
@@ -160,8 +185,9 @@ private fun DoomShieldInterventionScreen(
     suggestionBucket: String?,
     isBedtime: Boolean,
     onOpenKindle: () -> Unit,
+    onOpenBacklog: () -> Unit,
     onGoHome: () -> Unit,
-    onConfirmDryRun: () -> Unit,
+    onConfirmDryRun: () -> Boolean,
 ) {
     var coolingOffStartedAtMillis by rememberSaveable { mutableStateOf<Long?>(null) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -170,6 +196,7 @@ private fun DoomShieldInterventionScreen(
     } ?: DoomShieldPolicy.PAID_OVERRIDE_COOLING_OFF_MILLIS
     val remainingSeconds = (remainingMillis + 999L) / 1_000L
     val canConfirm = coolingOffStartedAtMillis != null && remainingMillis == 0L
+    var confirmationError by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(coolingOffStartedAtMillis) {
         val startedAtMillis = coolingOffStartedAtMillis ?: return@LaunchedEffect
@@ -200,7 +227,7 @@ private fun DoomShieldInterventionScreen(
 
             if (isBedtime) {
                 Text(
-                    text = "🌙 It's past 7 PM — time to wind down, not scroll.",
+                    text = "🌙 It's between 9 PM and 10 AM — time to sleep, not scroll.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -249,6 +276,10 @@ private fun DoomShieldInterventionScreen(
             Spacer(modifier = Modifier.height(32.dp))
             Button(modifier = Modifier.fillMaxWidth(), onClick = onOpenKindle) {
                 Text("Open Kindle instead")
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = onOpenBacklog) {
+                Text("Open Backlog in WARVIS")
             }
             Spacer(modifier = Modifier.height(12.dp))
             if (coolingOffStartedAtMillis == null) {
@@ -300,11 +331,26 @@ private fun DoomShieldInterventionScreen(
                         Button(
                             modifier = Modifier.fillMaxWidth(),
                             enabled = canConfirm,
-                            onClick = onConfirmDryRun,
+                            onClick = {
+                                confirmationError = if (onConfirmDryRun()) {
+                                    null
+                                } else {
+                                    "WARVIS could not save the 15-minute unlock. " +
+                                        "The blocked target will remain closed. Please try again."
+                                }
+                            },
                         ) {
                             Text(
                                 "Confirm dry run — unlock " +
                                     "${DoomShieldPolicy.PAID_OVERRIDE_DURATION_MINUTES} minutes",
+                            )
+                        }
+                        confirmationError?.let { error ->
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = error,
+                                color = MaterialTheme.colorScheme.error,
+                                fontWeight = FontWeight.Bold,
                             )
                         }
                     }

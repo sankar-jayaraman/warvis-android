@@ -8,15 +8,88 @@ internal data class DoomShieldTarget(
     val sourceLabel: String,
 )
 
+internal data class NightExemptionSelection(
+    val automaticPackages: Set<String>,
+    val userPackages: Set<String>,
+) {
+    val effectivePackages: Set<String>
+        get() = automaticPackages + userPackages
+
+    fun withUserExemption(packageName: String, exempt: Boolean): NightExemptionSelection {
+        if (packageName in automaticPackages) return this
+
+        return copy(
+            userPackages = if (exempt) {
+                userPackages + packageName
+            } else {
+                userPackages - packageName
+            },
+        )
+    }
+}
+
 internal object DoomShieldPolicy {
     const val PAID_OVERRIDE_PRICE_KR = 25
     const val PAID_OVERRIDE_DURATION_MINUTES = 15
     const val PAID_OVERRIDE_COOLING_OFF_MILLIS = 10_000L
     const val GRACE_PERIOD_MILLIS = PAID_OVERRIDE_DURATION_MINUTES * 60 * 1000L
-    const val INTERVENTION_LAUNCH_DEBOUNCE_MILLIS = 1_000L
+    const val INTERVENTION_LAUNCH_TIMEOUT_MILLIS = 1_000L
     const val MAX_NODES_TO_SCAN = 250
     const val MAX_TEXT_TO_SCAN = 500
+    private const val NIGHT_WINDOW_START_MINUTE = 21 * 60
+    private const val NIGHT_WINDOW_END_MINUTE = 10 * 60
     private const val X_TARGET_KEY = "domain:x.com"
+
+    val explicitNightExemptions = setOf(
+        // Email
+        "com.google.android.gm",
+        "com.microsoft.office.outlook",
+        "com.samsung.android.email.provider",
+        "com.android.email",
+        "com.google.android.email",
+        // SMS/messages
+        "com.google.android.apps.messaging",
+        "com.samsung.android.messaging",
+        "com.android.mms",
+        // WhatsApp
+        "com.whatsapp",
+        "com.whatsapp.w4b",
+        // YouTube Music (not the regular YouTube app)
+        "com.google.android.apps.youtube.music",
+    )
+
+    val mandatorySafetyNightExemptions = setOf(
+        "com.amazon.kindle",
+        "com.android.vending",
+        "com.google.android.packageinstaller",
+        "com.android.packageinstaller",
+        "com.android.permissioncontroller",
+        "com.google.android.permissioncontroller",
+        "com.samsung.android.permissioncontroller",
+        "com.miui.securitycenter",
+        "com.android.settings",
+        "com.samsung.android.settings",
+        "com.android.systemui",
+        "com.android.phone",
+        "com.android.emergency",
+        "com.google.android.emergency",
+        "com.android.dialer",
+        "com.google.android.dialer",
+        "com.samsung.android.dialer",
+        "com.android.incallui",
+        "com.google.android.incallui",
+        "com.samsung.android.incallui",
+        "com.oneplus.incallui",
+        "com.miui.incallui",
+        "com.samsung.android.app.telephonyui",
+        "com.android.deskclock",
+        "com.google.android.deskclock",
+        "com.sec.android.app.clockpackage",
+        "com.android.nfc",
+        "com.google.android.apps.walletnfcrel",
+        "com.samsung.android.spay",
+        "com.google.android.gms",
+    )
 
     val supportedBrowserPackages = setOf(
         "com.android.chrome",
@@ -89,6 +162,47 @@ internal object DoomShieldPolicy {
         return blockedDomains.keys.firstOrNull { domain -> text.containsDomain(domain) }
     }
 
+    fun isNightWindow(hour: Int, minute: Int): Boolean {
+        require(hour in 0..23) { "hour must be between 0 and 23" }
+        require(minute in 0..59) { "minute must be between 0 and 59" }
+
+        val minuteOfDay = hour * 60 + minute
+        return minuteOfDay >= NIGHT_WINDOW_START_MINUTE ||
+            minuteOfDay < NIGHT_WINDOW_END_MINUTE
+    }
+
+    fun classifyForegroundPackage(
+        packageName: String?,
+        insideNightWindow: Boolean,
+        existingTarget: DoomShieldTarget?,
+        exemptionPackages: Set<String>,
+    ): DoomShieldTarget? {
+        val normalizedPackage = normalizedForegroundPackage(packageName) ?: return null
+
+        if (existingTarget != null) return existingTarget
+        if (!insideNightWindow || normalizedPackage in exemptionPackages) return null
+
+        return DoomShieldTarget(
+            key = "app:$normalizedPackage",
+            displayName = normalizedPackage,
+            sourceLabel = normalizedPackage,
+        )
+    }
+
+    fun normalizedForegroundPackage(packageName: String?): String? {
+        val value = packageName?.trim().orEmpty()
+        if (value.isEmpty() || value.length > 255 || value == "android") return null
+        if (value != packageName || '.' !in value) return null
+        if (value.any { character ->
+                !character.isLetterOrDigit() && character != '.' && character != '_'
+            }
+        ) {
+            return null
+        }
+        if (value.startsWith('.') || value.endsWith('.') || ".." in value) return null
+        return value
+    }
+
     private fun String.containsDomain(domain: String): Boolean {
         var index = indexOf(domain)
         while (index >= 0) {
@@ -135,6 +249,19 @@ internal data class DoomShieldEntitlementState(
     fun deadlineFor(targetKey: String): Long = deadlinesByTarget[targetKey] ?: 0L
 }
 
+internal enum class DoomShieldGracePeriodStartResult {
+    AlreadyActive,
+    Persisted,
+    PersistenceFailed,
+}
+
+internal interface DoomShieldGracePeriodPersistence {
+    fun readDeadline(targetKey: String): Long
+    fun persistDeadline(targetKey: String, deadlineMillis: Long): Boolean
+    fun restoreDeadline(targetKey: String, deadlineMillis: Long)
+    fun removeDeadline(targetKey: String)
+}
+
 internal object DoomShieldGracePeriod {
     private const val PREFERENCES_NAME = "doom_shield_grace_periods"
     private const val GRACE_UNTIL_PREFIX = "grace_until:"
@@ -144,30 +271,52 @@ internal object DoomShieldGracePeriod {
         context: Context,
         targetKey: String,
         nowMillis: Long = System.currentTimeMillis(),
-    ): Boolean {
-        val preferences = preferences(context)
-        val preferenceKey = GRACE_UNTIL_PREFIX + targetKey
-        val currentDeadlineMillis = preferences.getLong(preferenceKey, 0L)
-        val currentState = DoomShieldEntitlementState(
-            deadlinesByTarget = mapOf(targetKey to currentDeadlineMillis),
+    ): DoomShieldGracePeriodStartResult =
+        startIfInactive(
+            persistence = SharedPreferencesGracePeriodPersistence(context),
+            targetKey = targetKey,
+            nowMillis = nowMillis,
         )
-        val updatedState = currentState.confirm(targetKey, nowMillis)
-        val updatedDeadlineMillis = updatedState.deadlineFor(targetKey)
-        if (updatedDeadlineMillis == currentDeadlineMillis) return false
 
-        return preferences
-            .edit()
-            .putLong(preferenceKey, updatedDeadlineMillis)
-            .commit()
+    internal fun startIfInactive(
+        persistence: DoomShieldGracePeriodPersistence,
+        targetKey: String,
+        nowMillis: Long,
+    ): DoomShieldGracePeriodStartResult {
+        val currentDeadlineMillis = persistence.readDeadline(targetKey)
+        if (currentDeadlineMillis > nowMillis) {
+            return DoomShieldGracePeriodStartResult.AlreadyActive
+        }
+
+        val updatedDeadlineMillis = nowMillis + DoomShieldPolicy.GRACE_PERIOD_MILLIS
+        if (persistence.persistDeadline(targetKey, updatedDeadlineMillis)) {
+            return DoomShieldGracePeriodStartResult.Persisted
+        }
+
+        persistence.restoreDeadline(targetKey, currentDeadlineMillis)
+        return DoomShieldGracePeriodStartResult.PersistenceFailed
     }
 
-    fun isActive(context: Context, targetKey: String, nowMillis: Long = System.currentTimeMillis()): Boolean {
-        val preferences = preferences(context)
-        val preferenceKey = GRACE_UNTIL_PREFIX + targetKey
-        val graceUntilMillis = preferences.getLong(preferenceKey, 0L)
+    fun isActive(
+        context: Context,
+        targetKey: String,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Boolean =
+        isActive(
+            persistence = SharedPreferencesGracePeriodPersistence(context),
+            targetKey = targetKey,
+            nowMillis = nowMillis,
+        )
+
+    internal fun isActive(
+        persistence: DoomShieldGracePeriodPersistence,
+        targetKey: String,
+        nowMillis: Long,
+    ): Boolean {
+        val graceUntilMillis = persistence.readDeadline(targetKey)
         if (graceUntilMillis <= nowMillis) {
             if (graceUntilMillis > 0L) {
-                preferences.edit().remove(preferenceKey).apply()
+                persistence.removeDeadline(targetKey)
             }
             return false
         }
@@ -175,6 +324,35 @@ internal object DoomShieldGracePeriod {
         return true
     }
 
-    private fun preferences(context: Context) =
-        context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    private class SharedPreferencesGracePeriodPersistence(context: Context) :
+        DoomShieldGracePeriodPersistence {
+        private val preferences =
+            context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+
+        override fun readDeadline(targetKey: String): Long =
+            preferences.getLong(preferenceKey(targetKey), 0L)
+
+        override fun persistDeadline(targetKey: String, deadlineMillis: Long): Boolean =
+            preferences
+                .edit()
+                .putLong(preferenceKey(targetKey), deadlineMillis)
+                .commit()
+
+        override fun restoreDeadline(targetKey: String, deadlineMillis: Long) {
+            val editor = preferences.edit()
+            if (deadlineMillis > 0L) {
+                editor.putLong(preferenceKey(targetKey), deadlineMillis)
+            } else {
+                editor.remove(preferenceKey(targetKey))
+            }
+            editor.apply()
+        }
+
+        override fun removeDeadline(targetKey: String) {
+            preferences.edit().remove(preferenceKey(targetKey)).apply()
+        }
+
+        private fun preferenceKey(targetKey: String): String =
+            GRACE_UNTIL_PREFIX + targetKey
+    }
 }

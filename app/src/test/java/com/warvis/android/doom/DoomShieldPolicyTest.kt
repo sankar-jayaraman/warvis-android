@@ -55,6 +55,14 @@ class DoomShieldPolicyTest {
     }
 
     @Test
+    fun nightWindow_usesExactCrossMidnightBoundaries() {
+        assertEquals(false, DoomShieldPolicy.isNightWindow(hour = 20, minute = 59))
+        assertEquals(true, DoomShieldPolicy.isNightWindow(hour = 21, minute = 0))
+        assertEquals(true, DoomShieldPolicy.isNightWindow(hour = 9, minute = 59))
+        assertEquals(false, DoomShieldPolicy.isNightWindow(hour = 10, minute = 0))
+    }
+
+    @Test
     fun entitlementConfirmation_grantsInitialFifteenMinutes() {
         val nowMillis = 1_000L
 
@@ -103,6 +111,71 @@ class DoomShieldPolicyTest {
     }
 
     @Test
+    fun gracePeriodStart_persistsInactiveEntitlement() {
+        val targetKey = "domain:x.com"
+        val persistence = TestGracePeriodPersistence(persistSucceeds = true)
+
+        val result = DoomShieldGracePeriod.startIfInactive(
+            persistence = persistence,
+            targetKey = targetKey,
+            nowMillis = 1_000L,
+        )
+
+        assertEquals(DoomShieldGracePeriodStartResult.Persisted, result)
+        assertEquals(
+            1_000L + DoomShieldPolicy.GRACE_PERIOD_MILLIS,
+            persistence.readDeadline(targetKey),
+        )
+    }
+
+    @Test
+    fun gracePeriodStart_doesNotPersistOrExtendAlreadyActiveEntitlement() {
+        val targetKey = "domain:x.com"
+        val originalDeadline = 10_000L
+        val persistence = TestGracePeriodPersistence(
+            initialDeadlineMillis = originalDeadline,
+            persistSucceeds = true,
+        )
+
+        val result = DoomShieldGracePeriod.startIfInactive(
+            persistence = persistence,
+            targetKey = targetKey,
+            nowMillis = 1_000L,
+        )
+
+        assertEquals(DoomShieldGracePeriodStartResult.AlreadyActive, result)
+        assertEquals(originalDeadline, persistence.readDeadline(targetKey))
+        assertEquals(0, persistence.persistAttempts)
+    }
+
+    @Test
+    fun gracePeriodPersistenceFailure_rollsBackInMemoryDeadlineAndRemainsInactive() {
+        val targetKey = "domain:x.com"
+        val expiredDeadline = 500L
+        val persistence = TestGracePeriodPersistence(
+            initialDeadlineMillis = expiredDeadline,
+            persistSucceeds = false,
+        )
+
+        val result = DoomShieldGracePeriod.startIfInactive(
+            persistence = persistence,
+            targetKey = targetKey,
+            nowMillis = 1_000L,
+        )
+
+        assertEquals(DoomShieldGracePeriodStartResult.PersistenceFailed, result)
+        assertEquals(expiredDeadline, persistence.readDeadline(targetKey))
+        assertEquals(
+            false,
+            DoomShieldGracePeriod.isActive(
+                persistence = persistence,
+                targetKey = targetKey,
+                nowMillis = 1_000L,
+            ),
+        )
+    }
+
+    @Test
     fun domainTarget_canonicalizesQuoraDomains() {
         val browserPackage = "com.android.chrome"
         val aliases = listOf("quora.com", "www.quora.com", "m.quora.com")
@@ -136,5 +209,41 @@ class DoomShieldPolicyTest {
         assertNull(DoomShieldPolicy.findBlockedDomainInText("https://example.com/x.comparison"))
         assertNull(DoomShieldPolicy.findBlockedDomainInText("https://notx.com"))
         assertNull(DoomShieldPolicy.findBlockedDomainInText("https://notquora.com"))
+    }
+
+    private class TestGracePeriodPersistence(
+        initialDeadlineMillis: Long = 0L,
+        private val persistSucceeds: Boolean,
+    ) : DoomShieldGracePeriodPersistence {
+        private val deadlinesByTarget = mutableMapOf<String, Long>()
+        var persistAttempts = 0
+            private set
+
+        init {
+            if (initialDeadlineMillis > 0L) {
+                deadlinesByTarget["domain:x.com"] = initialDeadlineMillis
+            }
+        }
+
+        override fun readDeadline(targetKey: String): Long =
+            deadlinesByTarget[targetKey] ?: 0L
+
+        override fun persistDeadline(targetKey: String, deadlineMillis: Long): Boolean {
+            persistAttempts += 1
+            deadlinesByTarget[targetKey] = deadlineMillis
+            return persistSucceeds
+        }
+
+        override fun restoreDeadline(targetKey: String, deadlineMillis: Long) {
+            if (deadlineMillis > 0L) {
+                deadlinesByTarget[targetKey] = deadlineMillis
+            } else {
+                deadlinesByTarget.remove(targetKey)
+            }
+        }
+
+        override fun removeDeadline(targetKey: String) {
+            deadlinesByTarget.remove(targetKey)
+        }
     }
 }
