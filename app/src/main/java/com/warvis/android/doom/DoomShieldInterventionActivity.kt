@@ -82,7 +82,8 @@ class DoomShieldInterventionActivity : ComponentActivity() {
         )
         val suggestionTitle = intent.getStringExtra(EXTRA_SUGGESTION_TITLE)
         val suggestionBucket = intent.getStringExtra(EXTRA_SUGGESTION_BUCKET)
-        val isBedtime = intent.getBooleanExtra(EXTRA_IS_BEDTIME, false)
+        val curfewLabel = intent.getStringExtra(EXTRA_CURFEW_LABEL)
+            ?.takeIf(NightCurfewLabelPolicy::isBoundedIntervalLabel)
 
         onBackPressedDispatcher.addCallback(
             this,
@@ -100,7 +101,7 @@ class DoomShieldInterventionActivity : ComponentActivity() {
                     sourceLabel = sourceLabel,
                     suggestionTitle = suggestionTitle,
                     suggestionBucket = suggestionBucket,
-                    isBedtime = isBedtime,
+                    curfewLabel = curfewLabel,
                     onOpenKindle = ::openKindle,
                     onOpenBacklog = ::openBacklog,
                     onOpenTaskRatchetSetup = ::openTaskRatchetSetup,
@@ -264,7 +265,7 @@ class DoomShieldInterventionActivity : ComponentActivity() {
         const val EXTRA_SOURCE_PACKAGE = "com.warvis.android.doom.EXTRA_SOURCE_PACKAGE"
         const val EXTRA_SUGGESTION_TITLE = "com.warvis.android.doom.EXTRA_SUGGESTION_TITLE"
         const val EXTRA_SUGGESTION_BUCKET = "com.warvis.android.doom.EXTRA_SUGGESTION_BUCKET"
-        const val EXTRA_IS_BEDTIME = "com.warvis.android.doom.EXTRA_IS_BEDTIME"
+        const val EXTRA_CURFEW_LABEL = "com.warvis.android.doom.EXTRA_CURFEW_LABEL"
     }
 
     internal sealed interface PaymentStatus {
@@ -281,7 +282,7 @@ private fun DoomShieldInterventionScreen(
     sourceLabel: String,
     suggestionTitle: String?,
     suggestionBucket: String?,
-    isBedtime: Boolean,
+    curfewLabel: String?,
     onOpenKindle: () -> Unit,
     onOpenBacklog: () -> Unit,
     onOpenTaskRatchetSetup: () -> Unit,
@@ -328,9 +329,9 @@ private fun DoomShieldInterventionScreen(
             )
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (isBedtime) {
+            if (curfewLabel != null) {
                 Text(
-                    text = "🌙 It's between 9 PM and 10 AM — time to sleep, not scroll.",
+                    text = "🌙 It's within your $curfewLabel night curfew — time to sleep, not scroll.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -361,6 +362,7 @@ private fun DoomShieldInterventionScreen(
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                             )
                         }
+
                     }
                 }
             } else {
@@ -507,6 +509,7 @@ private fun DoomShieldInterventionScreen(
                             )
                         }
                     }
+
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
@@ -514,5 +517,20 @@ private fun DoomShieldInterventionScreen(
                 Text("Go Home")
             }
         }
+    }
+}
+
+internal object NightCurfewLabelPolicy {
+    private val intervalPattern = Regex("""(\d{2}):(\d{2})-(\d{2}):(\d{2})""")
+
+    fun isBoundedIntervalLabel(label: String): Boolean {
+        if (label.length != 11) return false
+        val match = intervalPattern.matchEntire(label) ?: return false
+        val (startHour, startMinute, endHour, endMinute) =
+            match.destructured.toList().map(String::toInt)
+        return startHour in 0..23 &&
+            endHour in 0..23 &&
+            startMinute in 0..59 &&
+            endMinute in 0..59
     }
 }

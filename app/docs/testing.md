@@ -1,6 +1,6 @@
 # WARVIS Testing
 
-**Last Updated:** 2026-10-15
+**Last Updated:** 2026-10-16
 
 ## Current validation status
 
@@ -72,20 +72,25 @@ After connecting an emulator or Android device:
 47. Unlock native X and confirm `x.com`/`twitter.com` aliases share the entitlement; repeat in the other direction.
 48. Tap the confirmation rapidly and confirm progress disables duplicate taps and does not extend the original entitlement.
 49. At device-local 20:59, confirm existing Doom Shield blocking behavior remains unchanged.
-50. On Today, tap **Review night app exemptions** and confirm the launchable installed-app list opens.
-51. Confirm automatic exemptions are switched on and disabled so they cannot be removed.
-52. Search for a banking, authenticator, or password-manager app, enable it, leave the screen, reopen it, and confirm the package-ID selection persisted.
-53. At 21:00 and 09:59, open an arbitrary non-exempt app and confirm the TaskRatchet flow appears with the sleep message.
-54. At 20:59 and 10:00, open that same arbitrary app and confirm it is allowed.
-55. During the night window, confirm Gmail/Outlook/Samsung Email, the default SMS app, WhatsApp, WhatsApp Business, and YouTube Music are allowed when installed.
-56. During the night window, confirm WARVIS, Home/launcher, phone/emergency, Clock, Settings, Kindle/Play Store, enabled keyboards, and enabled accessibility services remain accessible.
-57. Confirm a manually exempted banking/authenticator/password-manager app is allowed during the night window.
-58. Confirm regular YouTube, Instagram, X, Quora, and blocked browser domains still trigger their canonical intervention even if their package was accidentally persisted as a user exemption.
-59. Confirm Chrome and other browsers are not automatically exempt merely because they are preinstalled/system apps.
-60. During the night window, confirm an active target-specific 15-minute entitlement is honored for its app, but a different arbitrary app remains blocked.
-61. Unlock two arbitrary apps separately and confirm their `app:<package>` entitlements do not affect each other.
-62. Disable or change the default SMS/dialer, enabled keyboard, or accessibility service; after one minute, confirm the newly enabled package is automatically allowed.
-63. During the night window, confirm common Android/Google/Samsung permission controllers and separate in-call UI packages remain mandatory exemptions.
+50. On Today, tap **Configure night curfew and exemptions** and confirm the launchable installed-app list opens.
+51. Confirm the default saved schedule is enabled, displays `21:00-10:00`, and says it crosses midnight.
+52. Set equal start and end times; confirm clear validation appears, the invalid interval is not saved, and enabling is rejected.
+53. While the curfew is disabled, change to `13:00-17:00`, leave the screen, reopen it, and confirm the disabled same-day schedule persisted.
+54. Enable `13:00-17:00`; confirm an arbitrary non-exempt app is allowed at 12:59 and 17:00, and intercepted at 13:00 and 16:59.
+55. Restore `21:00-10:00`; confirm an arbitrary non-exempt app is intercepted at 21:00 and 09:59, and allowed at 20:59 and 10:00.
+56. Confirm only broad-curfew interceptions show the configured sleep interval; existing Instagram, YouTube, X, Quora, and blocked-domain interventions are not mislabeled as curfew-only.
+57. Disable the broad curfew and confirm arbitrary apps are allowed while existing Doom Shield targets remain blocked.
+58. Confirm automatic exemptions are switched on and disabled so they cannot be removed.
+59. Search for a banking, authenticator, or password-manager app, enable it, leave the screen, reopen it, and confirm the package-ID selection persisted.
+60. During the configured curfew, confirm Gmail/Outlook/Samsung Email, the default SMS app, WhatsApp, WhatsApp Business, and YouTube Music are allowed when installed.
+61. During the configured curfew, confirm WARVIS, Home/launcher, phone/emergency, Clock, Settings, Kindle/Play Store, enabled keyboards, and enabled accessibility services remain accessible.
+62. Confirm a manually exempted banking/authenticator/password-manager app is allowed during the configured curfew.
+63. Confirm regular YouTube, Instagram, X, Quora, and blocked browser domains still trigger their canonical intervention even if their package was accidentally persisted as a user exemption.
+64. Confirm Chrome and other browsers are not automatically exempt merely because they are preinstalled/system apps.
+65. During the configured curfew, confirm an active target-specific 15-minute entitlement is honored for its app, but a different arbitrary app remains blocked.
+66. Unlock two arbitrary apps separately and confirm their `app:<package>` entitlements do not affect each other.
+67. Disable or change the default SMS/dialer, enabled keyboard, or accessibility service; after one minute, confirm the newly enabled package is automatically allowed.
+68. During the configured curfew, confirm common Android/Google/Samsung permission controllers and separate in-call UI packages remain mandatory exemptions.
 
 Exercise typed failure handling in dry-run with test doubles or controlled failures: HTTP 400,
 401/403, 402, 409, 422, 429, timeout/offline, malformed JSON, remote `failed`, credential
@@ -107,6 +112,8 @@ Set-Location C:\Users\SNKR\WARVIS
 .\gradlew.bat :app:testDebugUnitTest `
   --tests "com.warvis.android.doom.DoomShieldPolicyTest" `
   --tests "com.warvis.android.doom.DoomShieldNightPolicyTest" `
+  --tests "com.warvis.android.doom.NightCurfewScheduleTest" `
+  --tests "com.warvis.android.doom.NightCurfewRepositoryTest" `
   --tests "com.warvis.android.doom.NightExemptionSelectionTest" `
   --tests "com.warvis.android.doom.DoomShieldDisableAuthorizationTest" `
   --tests "com.warvis.android.ui.WarvisDestinationContractTest" `
@@ -115,8 +122,9 @@ Set-Location C:\Users\SNKR\WARVIS
   --tests "com.warvis.android.taskratchet.TaskRatchetAttemptStateTest"
 ```
 
-The nighttime tests cover exact 21:00/10:00 boundaries, unchanged canonical targets,
-explicit and user exemptions, existing-target precedence, package validation, and
+The nighttime tests cover default, same-day, and cross-midnight boundaries; disabled and invalid
+schedules; corrupt persisted-value fallback; atomic save success/failure; unchanged canonical
+targets; explicit and user exemptions; existing-target precedence; package validation; and
 target-specific `app:<package>` keys. The selection tests verify that user choices remain
 independent and cannot remove mandatory automatic exemptions. TaskRatchet tests cover the
 400-cent invariant, dry-run/live labels, live-enable policy, documented HTTP mapping, atomic

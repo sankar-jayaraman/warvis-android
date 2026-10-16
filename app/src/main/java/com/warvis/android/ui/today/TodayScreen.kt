@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.warvis.android.data.model.WarvisState
 import com.warvis.android.doom.DoomShieldSettingsLaunchResult
+import com.warvis.android.doom.NightCurfewSchedule
 import com.warvis.android.ui.components.ProgressBlock
 import com.warvis.android.ui.components.ScreenScaffold
 import com.warvis.android.ui.components.SectionTitle
@@ -35,6 +36,7 @@ internal fun TodayScreen(
     onToggleBedtime: (Boolean) -> Unit,
     onOpenNightExemptions: () -> Unit,
     onOpenTaskRatchetSetup: () -> Unit,
+    nightCurfewSchedule: NightCurfewSchedule,
     doomShieldEnabled: Boolean,
     onDoomShieldAction: () -> DoomShieldSettingsLaunchResult?,
 ) {
@@ -100,8 +102,13 @@ internal fun TodayScreen(
             WarvisOutlinedCard {
                 SectionTitle("Doom Shield")
                 Text(
-                    "Catch existing Doom Shield targets all day. From 21:00 to 10:00, " +
-                        "extend the same intervention to all non-essential apps.",
+                    if (nightCurfewSchedule.enabled) {
+                        "Catch existing Doom Shield targets all day. During " +
+                            "${nightCurfewSchedule.intervalLabel}, extend the same intervention " +
+                            "to all non-essential apps."
+                    } else {
+                        "Catch existing Doom Shield targets all day. The broad night curfew is disabled."
+                    },
                 )
                 Text(
                     text = "Requires Android Accessibility permission. Matching happens locally; " +
@@ -149,7 +156,7 @@ internal fun TodayScreen(
                     )
                 }
                 Button(onClick = onOpenNightExemptions) {
-                    Text("Review night app exemptions")
+                    Text("Configure night curfew and exemptions")
                 }
                 Button(onClick = onOpenTaskRatchetSetup) {
                     Text("Set up TaskRatchet payments")

@@ -54,14 +54,6 @@ class DoomShieldPolicyTest {
     }
 
     @Test
-    fun nightWindow_usesExactCrossMidnightBoundaries() {
-        assertEquals(false, DoomShieldPolicy.isNightWindow(hour = 20, minute = 59))
-        assertEquals(true, DoomShieldPolicy.isNightWindow(hour = 21, minute = 0))
-        assertEquals(true, DoomShieldPolicy.isNightWindow(hour = 9, minute = 59))
-        assertEquals(false, DoomShieldPolicy.isNightWindow(hour = 10, minute = 0))
-    }
-
-    @Test
     fun entitlementConfirmation_grantsInitialFifteenMinutes() {
         val nowMillis = 1_000L
 

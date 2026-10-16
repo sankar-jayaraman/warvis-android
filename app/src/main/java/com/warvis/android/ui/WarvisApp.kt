@@ -24,6 +24,7 @@ import com.warvis.android.data.WarvisRepository
 import com.warvis.android.doom.DoomShieldControlAction
 import com.warvis.android.doom.DoomShieldControlPolicy
 import com.warvis.android.doom.DoomShieldSettingsGateway
+import com.warvis.android.doom.NightCurfewRepository
 import com.warvis.android.taskratchet.TaskRatchetConfigurationRepository
 import com.warvis.android.taskratchet.TaskRatchetPaymentCoordinator
 import com.warvis.android.ui.backlog.BacklogScreen
@@ -50,6 +51,10 @@ internal fun WarvisApp(
     val backlogState by backlogRepository.state.collectAsStateWithLifecycle()
     val bedtimeRepository = remember { BedtimeRepository(applicationContext) }
     val bedtimeEnabled by bedtimeRepository.enabled.collectAsStateWithLifecycle()
+    val nightCurfewRepository = remember { NightCurfewRepository(applicationContext) }
+    var nightCurfewSchedule by remember {
+        mutableStateOf(nightCurfewRepository.readSnapshot())
+    }
     val taskRatchetRepository = remember {
         TaskRatchetConfigurationRepository(applicationContext)
     }
@@ -138,7 +143,13 @@ internal fun WarvisApp(
                     },
                 )
             } else if (showingNightExemptions) {
-                NightExemptionsScreen(onBack = { showingNightExemptions = false })
+                NightExemptionsScreen(
+                    onBack = {
+                        nightCurfewSchedule = nightCurfewRepository.readSnapshot()
+                        showingNightExemptions = false
+                    },
+                    onSchedulePersisted = { nightCurfewSchedule = it },
+                )
             } else when (destination) {
                 WarvisDestination.Today -> TodayScreen(
                     state = state,
@@ -147,6 +158,7 @@ internal fun WarvisApp(
                     onToggleBedtime = bedtimeRepository::setEnabled,
                     onOpenNightExemptions = { showingNightExemptions = true },
                     onOpenTaskRatchetSetup = { showingTaskRatchetSetup = true },
+                    nightCurfewSchedule = nightCurfewSchedule,
                     doomShieldEnabled = doomShieldEnabled,
                     onDoomShieldAction = {
                         when (DoomShieldControlPolicy.decide(doomShieldEnabled).action) {

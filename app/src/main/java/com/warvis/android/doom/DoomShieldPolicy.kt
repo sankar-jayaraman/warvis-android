@@ -35,8 +35,6 @@ internal object DoomShieldPolicy {
     const val INTERVENTION_LAUNCH_TIMEOUT_MILLIS = 1_000L
     const val MAX_NODES_TO_SCAN = 250
     const val MAX_TEXT_TO_SCAN = 500
-    private const val NIGHT_WINDOW_START_MINUTE = 21 * 60
-    private const val NIGHT_WINDOW_END_MINUTE = 10 * 60
     private const val X_TARGET_KEY = "domain:x.com"
 
     val explicitNightExemptions = setOf(
@@ -159,15 +157,6 @@ internal object DoomShieldPolicy {
         if (text.length > MAX_TEXT_TO_SCAN) return null
 
         return blockedDomains.keys.firstOrNull { domain -> text.containsDomain(domain) }
-    }
-
-    fun isNightWindow(hour: Int, minute: Int): Boolean {
-        require(hour in 0..23) { "hour must be between 0 and 23" }
-        require(minute in 0..59) { "minute must be between 0 and 59" }
-
-        val minuteOfDay = hour * 60 + minute
-        return minuteOfDay >= NIGHT_WINDOW_START_MINUTE ||
-            minuteOfDay < NIGHT_WINDOW_END_MINUTE
     }
 
     fun classifyForegroundPackage(

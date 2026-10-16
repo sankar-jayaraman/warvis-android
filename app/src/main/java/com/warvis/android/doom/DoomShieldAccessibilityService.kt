@@ -10,6 +10,7 @@ import java.util.Calendar
 
 class DoomShieldAccessibilityService : AccessibilityService() {
     private val nightExemptionProvider by lazy { NightExemptionProvider(this) }
+    private val nightCurfewRepository by lazy { NightCurfewRepository(this) }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
@@ -19,11 +20,13 @@ class DoomShieldAccessibilityService : AccessibilityService() {
         ) ?: return
         if (packageName == this.packageName) return
 
+        val schedule = nightCurfewRepository.readSnapshot()
         val localTime = Calendar.getInstance()
-        val isNightWindow = DoomShieldPolicy.isNightWindow(
+        val minuteOfDay = MinuteOfDay.fromHourMinute(
             hour = localTime.get(Calendar.HOUR_OF_DAY),
             minute = localTime.get(Calendar.MINUTE),
-        )
+        ) ?: return
+        val isNightWindow = NightCurfewPolicy.isActive(schedule, minuteOfDay)
         val existingTarget = DoomShieldPolicy.nativeAppTarget(packageName)
             ?: browserTarget(packageName)
         val nowMillis = System.currentTimeMillis()
@@ -46,7 +49,13 @@ class DoomShieldAccessibilityService : AccessibilityService() {
         if (DoomShieldGracePeriod.isActive(this, labeledTarget.key, nowMillis)) return
         if (!DoomShieldInterventionState.tryBeginLaunch(nowMillis)) return
 
-        showIntervention(labeledTarget, packageName, isNightWindow)
+        showIntervention(
+            target = labeledTarget,
+            sourcePackage = packageName,
+            curfewLabel = schedule.intervalLabel.takeIf {
+                existingTarget == null && isNightWindow
+            },
+        )
     }
 
     override fun onInterrupt() = Unit
@@ -62,7 +71,7 @@ class DoomShieldAccessibilityService : AccessibilityService() {
     private fun showIntervention(
         target: DoomShieldTarget,
         sourcePackage: String,
-        isNightWindow: Boolean,
+        curfewLabel: String?,
     ) {
         try {
             startActivity(
@@ -71,7 +80,7 @@ class DoomShieldAccessibilityService : AccessibilityService() {
                     .putExtra(DoomShieldInterventionActivity.EXTRA_TARGET_LABEL, target.displayName)
                     .putExtra(DoomShieldInterventionActivity.EXTRA_SOURCE_LABEL, target.sourceLabel)
                     .putExtra(DoomShieldInterventionActivity.EXTRA_SOURCE_PACKAGE, sourcePackage)
-                    .putExtra(DoomShieldInterventionActivity.EXTRA_IS_BEDTIME, isNightWindow)
+                    .putExtra(DoomShieldInterventionActivity.EXTRA_CURFEW_LABEL, curfewLabel)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
         } catch (exception: ActivityNotFoundException) {

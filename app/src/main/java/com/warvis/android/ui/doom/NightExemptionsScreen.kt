@@ -1,5 +1,7 @@
 package com.warvis.android.ui.doom
 
+import android.app.TimePickerDialog
+import android.text.format.DateFormat
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -28,13 +30,26 @@ import androidx.compose.ui.unit.dp
 import com.warvis.android.doom.NightExemptionRepository
 import com.warvis.android.doom.NightExemptionResolver
 import com.warvis.android.doom.NightExemptionSelection
+import com.warvis.android.doom.MinuteOfDay
+import com.warvis.android.doom.NightCurfewRepository
+import com.warvis.android.doom.NightCurfewSaveResult
+import com.warvis.android.doom.NightCurfewSchedule
 
 @Composable
-internal fun NightExemptionsScreen(onBack: () -> Unit) {
+internal fun NightExemptionsScreen(
+    onBack: () -> Unit,
+    onSchedulePersisted: (NightCurfewSchedule) -> Unit,
+) {
     BackHandler(onBack = onBack)
-    val context = LocalContext.current.applicationContext
-    val repository = remember { NightExemptionRepository(context) }
-    val resolver = remember { NightExemptionResolver(context) }
+    val context = LocalContext.current
+    val applicationContext = context.applicationContext
+    val repository = remember { NightExemptionRepository(applicationContext) }
+    val resolver = remember { NightExemptionResolver(applicationContext) }
+    val curfewRepository = remember { NightCurfewRepository(applicationContext) }
+    var persistedSchedule by remember { mutableStateOf(curfewRepository.readSnapshot()) }
+    var draftStart by remember { mutableStateOf(persistedSchedule.start) }
+    var draftEnd by remember { mutableStateOf(persistedSchedule.end) }
+    var scheduleError by remember { mutableStateOf<String?>(null) }
     val apps = remember { resolver.launchableApps() }
     var selection by remember {
         mutableStateOf(
@@ -45,6 +60,41 @@ internal fun NightExemptionsScreen(onBack: () -> Unit) {
         )
     }
     var query by remember { mutableStateOf("") }
+    val persistSchedule: (NightCurfewSchedule) -> Unit = { candidate ->
+        when (curfewRepository.save(candidate)) {
+            NightCurfewSaveResult.Persisted -> {
+                persistedSchedule = candidate
+                draftStart = candidate.start
+                draftEnd = candidate.end
+                scheduleError = null
+                onSchedulePersisted(candidate)
+            }
+            NightCurfewSaveResult.InvalidSchedule -> {
+                scheduleError = "Start and end times must be different."
+            }
+            NightCurfewSaveResult.PersistenceFailed -> {
+                draftStart = persistedSchedule.start
+                draftEnd = persistedSchedule.end
+                scheduleError = "WARVIS could not save the night curfew. The saved schedule is unchanged."
+            }
+        }
+    }
+    val updateTime: (Boolean, MinuteOfDay) -> Unit = { isStart, selected ->
+        val nextStart = if (isStart) selected else draftStart
+        val nextEnd = if (isStart) draftEnd else selected
+        draftStart = nextStart
+        draftEnd = nextEnd
+        val candidate = NightCurfewSchedule(
+            enabled = persistedSchedule.enabled,
+            start = nextStart,
+            end = nextEnd,
+        )
+        if (candidate.isValid) {
+            persistSchedule(candidate)
+        } else {
+            scheduleError = "Start and end times must be different."
+        }
+    }
     val visibleApps = remember(apps, query) {
         val normalizedQuery = query.trim()
         if (normalizedQuery.isEmpty()) {
@@ -68,11 +118,99 @@ internal fun NightExemptionsScreen(onBack: () -> Unit) {
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
         )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Broad night curfew",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = persistedSchedule.summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = persistedSchedule.enabled,
+                onCheckedChange = { enabled ->
+                    val draft = NightCurfewSchedule(
+                        enabled = enabled,
+                        start = draftStart,
+                        end = draftEnd,
+                    )
+                    if (enabled && !draft.isValid) {
+                        scheduleError = "Choose different start and end times before enabling."
+                    } else if (draft.isValid) {
+                        persistSchedule(draft)
+                    } else {
+                        persistSchedule(persistedSchedule.copy(enabled = false))
+                    }
+                },
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Button(
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    TimePickerDialog(
+                        context,
+                        { _, hour, minute ->
+                            MinuteOfDay.fromHourMinute(hour, minute)?.let {
+                                updateTime(true, it)
+                            }
+                        },
+                        draftStart.hour,
+                        draftStart.minute,
+                        DateFormat.is24HourFormat(context),
+                    ).show()
+                },
+            ) {
+                Text("Start ${draftStart.label}")
+            }
+            Button(
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    TimePickerDialog(
+                        context,
+                        { _, hour, minute ->
+                            MinuteOfDay.fromHourMinute(hour, minute)?.let {
+                                updateTime(false, it)
+                            }
+                        },
+                        draftEnd.hour,
+                        draftEnd.minute,
+                        DateFormat.is24HourFormat(context),
+                    ).show()
+                },
+            ) {
+                Text("End ${draftEnd.label}")
+            }
+        }
+        scheduleError?.let { message ->
+            Text(
+                text = message,
+                color = MaterialTheme.colorScheme.error,
+                fontWeight = FontWeight.Bold,
+            )
+        }
         Text(
-            text = "From 21:00 to 10:00, WARVIS intervenes in every app except the ones " +
-                "allowed here. Email, messaging defaults, phone/emergency, alarms, keyboards, " +
-                "accessibility services, system escape routes, and other critical apps are " +
-                "allowed automatically.",
+            text = if (persistedSchedule.enabled) {
+                "During ${persistedSchedule.intervalLabel}, WARVIS intervenes in every app except " +
+                    "the ones allowed here. Email, messaging defaults, phone/emergency, alarms, " +
+                    "keyboards, accessibility services, system escape routes, and other critical " +
+                    "apps are allowed automatically."
+            } else {
+                "The broad night curfew is disabled. Existing Doom Shield targets remain blocked " +
+                    "at all times; these exemptions apply when the broad curfew is enabled."
+            },
             style = MaterialTheme.typography.bodyMedium,
         )
         Text(

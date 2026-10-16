@@ -1,6 +1,6 @@
 # Android App Architecture
 
-**Last Updated:** 2026-10-15
+**Last Updated:** 2026-10-16
 
 The Android app uses a small unidirectional state flow:
 
@@ -22,6 +22,8 @@ User action
 - Screen packages - Today, Sprint, Knowledge, and Journey UI.
 - `DoomShieldAccessibilityService` - opt-in service that detects blocked native apps and domains exposed by supported browsers.
 - `DoomShieldPolicy` - local target definitions, nighttime safety exemptions, and 15-minute target-entitlement policy.
+- `NightCurfewSchedule` / `NightCurfewPolicy` - Android-free immutable broad-curfew interval and classification logic.
+- `NightCurfewRepository` - atomic SharedPreferences storage with validated snapshot reads and safe defaults.
 - `DoomShieldInterventionActivity` - intervention screen launched when a blocked domain is detected.
 - `DoomShieldServiceStatusReader` / `DoomShieldSettingsGateway` - Android boundary APIs for service status and Accessibility settings.
 - `DisableAuthorizationState` - pure, short-lived, purpose-specific one-shot authorization for the WARVIS-originated disable route.
@@ -41,9 +43,13 @@ Persisted keys:
 - knowledge-ring scores
 - knowledge-ring update labels
 - Doom Shield per-target grace-period timestamps
+- Doom Shield broad-curfew enabled state and start/end minute-of-day values
 - TaskRatchet connection metadata, dry-run/live mode, and unresolved payment attempts
 
 Disable authorizations are process-memory-only and are not stored with target entitlement keys.
+The accessibility service reads a fresh validated curfew snapshot for each relevant event, so
+schedule changes do not require restarting the service. Existing canonical targets are classified
+before broad-curfew exemptions and remain blocked when the broad curfew is disabled or inactive.
 The TaskRatchet API key is stored separately as AES/GCM ciphertext plus IV. The validated
 TaskRatchet user ID and a random per-replacement credential generation bind pending attempts to
 the exact account/key generation that created them. The AES key is

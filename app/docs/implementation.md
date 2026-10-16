@@ -1,6 +1,6 @@
 # Android App Implementation
 
-**Last Updated:** 2026-10-15
+**Last Updated:** 2026-10-16
 
 ## State model
 
@@ -55,3 +55,11 @@ Each screen receives `WarvisState` and callbacks. Screens do not mutate state di
 configuration defaults to dry-run. The coordinator persists an idempotent attempt before calling
 TaskRatchet, persists remote success before granting an entitlement or disable authorization, and
 keeps confirmed attempts for recovery when local follow-through fails.
+
+`NightCurfewSchedule` and `NightCurfewPolicy` are Android-free immutable policy types. Minute-of-day
+values are constrained to `0..1439`; enabled schedules support same-day and cross-midnight
+start-inclusive/end-exclusive intervals. `NightCurfewRepository` reads one SharedPreferences
+snapshot per accessibility event, falls back to the enabled `21:00-10:00` default for corrupt or
+invalid persisted state, and writes the enabled/start/end tuple with one synchronous `commit()`.
+The Night app exemptions screen edits the schedule with minute-precision time pickers and reports
+validation or persistence failures without presenting unsaved state as successful.

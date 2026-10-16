@@ -1,6 +1,6 @@
 # WARVIS Architecture
 
-**Last Updated:** 2026-10-15
+**Last Updated:** 2026-10-16
 
 WARVIS is a single-module native Android app.
 
@@ -22,6 +22,7 @@ MainActivity
      -> Today / Sprint / Knowledge / Journey screens
 DoomShieldAccessibilityService
   -> detects blocked native apps and supported browser domains
+  -> applies the current persisted broad-curfew schedule to other non-exempt apps
   -> immediately launches Amazon Kindle
   -> records each successful handoff locally
 DoomShieldWeeklyReportReceiver
@@ -52,6 +53,12 @@ overrides use the same payment provider but create only a target-specific 15-min
 The exact amount is US$4.00 / 400 cents, described as roughly 25-28 DKK with bank conversion and FX
 fees varying. Dry-run is default; live charging requires validated credentials, a confirmed payment
 method, and explicit acknowledgement.
+
+The broad curfew is a separate local policy with an enabled toggle and minute-precision start/end
+times. The default is enabled `21:00-10:00` in device-local time. Pure schedule logic handles both
+same-day and cross-midnight intervals, while a SharedPreferences repository atomically stores the
+three configuration values and falls back on corrupt or equal-endpoint state. The Accessibility
+Service reads a fresh schedule snapshot per event; canonical blocked targets retain precedence.
 
 The personal TaskRatchet key is AES/GCM-encrypted using a non-exportable Android Keystore key.
 Only ciphertext and IV are stored in private preferences, and TaskRatchet preferences are excluded

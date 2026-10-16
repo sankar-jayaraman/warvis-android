@@ -1,6 +1,6 @@
 # WARVIS Implementation Notes
 
-**Last Updated:** 2026-10-15
+**Last Updated:** 2026-10-16
 
 ## Project layout
 
@@ -13,6 +13,8 @@ app/src/main/java/com/warvis/android
 │   └── model/Models.kt
 ├── doom
 │   ├── DoomShieldPolicy.kt
+│   ├── NightCurfewSchedule.kt
+│   ├── NightCurfewRepository.kt
 │   ├── DoomShieldAccessibilityService.kt
 │   ├── DoomShieldSwitchLog.kt
 │   ├── DoomShieldWeeklyReportManager.kt
@@ -90,6 +92,13 @@ Paid overrides and WARVIS-originated disable requests use TaskRatchet. The API k
 before encrypted local storage. Dry-run is the default; live mode is separately acknowledged.
 Each attempt uses a durable request ID before network access, and retries reuse it until the
 purpose-specific benefit is granted. TaskRatchet receives only bounded canonical target notes.
+
+The broad nighttime policy is configurable from the Night app exemptions screen. Its immutable,
+Android-free schedule uses validated minute-of-day values and supports same-day or cross-midnight
+start-inclusive/end-exclusive intervals. The persisted default remains enabled from `21:00` through
+`10:00` local device time. Equal endpoints are rejected, corrupt stored values fall back safely,
+and the Accessibility Service reads a current one-snapshot schedule for every relevant event.
+Canonical Doom Shield app/domain targets keep precedence regardless of curfew state.
 
 ## Design tradeoff
 

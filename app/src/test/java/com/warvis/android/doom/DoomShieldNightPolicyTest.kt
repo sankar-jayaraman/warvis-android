@@ -153,6 +153,23 @@ class DoomShieldNightPolicyTest {
     }
 
     @Test
+    fun existingTarget_winsWhenBroadCurfewIsDisabled() {
+        val packageName = "com.google.android.youtube"
+        val existingTarget = DoomShieldPolicy.nativeAppTarget(packageName)
+
+        assertEquals(
+            existingTarget,
+            classify(
+                packageName = packageName,
+                hour = 12,
+                minute = 0,
+                existingTarget = existingTarget,
+                schedule = NightCurfewSchedule.Default.copy(enabled = false),
+            ),
+        )
+    }
+
+    @Test
     fun existingTargetCanonicalKeys_remainUnchanged() {
         assertEquals(
             "app:com.instagram.android",
@@ -186,10 +203,14 @@ class DoomShieldNightPolicyTest {
         minute: Int,
         existingTarget: DoomShieldTarget? = null,
         exemptions: Set<String> = emptySet(),
+        schedule: NightCurfewSchedule = NightCurfewSchedule.Default,
     ): DoomShieldTarget? =
         DoomShieldPolicy.classifyForegroundPackage(
             packageName = packageName,
-            insideNightWindow = DoomShieldPolicy.isNightWindow(hour, minute),
+            insideNightWindow = NightCurfewPolicy.isActive(
+                schedule = schedule,
+                minuteOfDay = requireNotNull(MinuteOfDay.fromHourMinute(hour, minute)),
+            ),
             existingTarget = existingTarget,
             exemptionPackages = exemptions,
         )
