@@ -5,11 +5,13 @@
         <exclude domain="sharedpref" path="task_ratchet_credentials.xml"/>
         <exclude domain="sharedpref" path="task_ratchet_configuration.xml"/>
         <exclude domain="sharedpref" path="task_ratchet_attempts.xml"/>
+        <exclude domain="sharedpref" path="instagram_gaming.xml"/>
     </cloud-backup>
     <device-transfer>
         <include domain="sharedpref" path="warvis_backlog.xml"/>
         <exclude domain="sharedpref" path="task_ratchet_credentials.xml"/>
         <exclude domain="sharedpref" path="task_ratchet_configuration.xml"/>
         <exclude domain="sharedpref" path="task_ratchet_attempts.xml"/>
+        <exclude domain="sharedpref" path="instagram_gaming.xml"/>
     </device-transfer>
 </data-extraction-rules>

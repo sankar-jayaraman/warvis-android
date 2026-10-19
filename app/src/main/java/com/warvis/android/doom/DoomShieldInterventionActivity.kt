@@ -60,6 +60,7 @@ class DoomShieldInterventionActivity : ComponentActivity() {
     private var targetLabel: String = "a blocked app or site"
     private var sourceLabel: String = "your phone"
     private var sourcePackage: String? = null
+    private var instagramQuarantineUntilEpochMillis: Long? = null
     private var confirmationInProgress = false
     private lateinit var taskRatchetConfigurationRepository:
         TaskRatchetConfigurationRepository
@@ -73,6 +74,9 @@ class DoomShieldInterventionActivity : ComponentActivity() {
         targetLabel = intent.getStringExtra(EXTRA_TARGET_LABEL) ?: targetLabel
         sourceLabel = intent.getStringExtra(EXTRA_SOURCE_LABEL) ?: sourceLabel
         sourcePackage = intent.getStringExtra(EXTRA_SOURCE_PACKAGE)
+        instagramQuarantineUntilEpochMillis =
+            intent.getLongExtra(EXTRA_INSTAGRAM_QUARANTINE_UNTIL, 0L)
+                .takeIf { it > 0L }
         taskRatchetConfigurationRepository = TaskRatchetConfigurationRepository(
             applicationContext,
         )
@@ -102,6 +106,8 @@ class DoomShieldInterventionActivity : ComponentActivity() {
                     suggestionTitle = suggestionTitle,
                     suggestionBucket = suggestionBucket,
                     curfewLabel = curfewLabel,
+                    instagramQuarantineUntilEpochMillis =
+                        instagramQuarantineUntilEpochMillis,
                     onOpenKindle = ::openKindle,
                     onOpenBacklog = ::openBacklog,
                     onOpenTaskRatchetSetup = ::openTaskRatchetSetup,
@@ -266,6 +272,8 @@ class DoomShieldInterventionActivity : ComponentActivity() {
         const val EXTRA_SUGGESTION_TITLE = "com.warvis.android.doom.EXTRA_SUGGESTION_TITLE"
         const val EXTRA_SUGGESTION_BUCKET = "com.warvis.android.doom.EXTRA_SUGGESTION_BUCKET"
         const val EXTRA_CURFEW_LABEL = "com.warvis.android.doom.EXTRA_CURFEW_LABEL"
+        const val EXTRA_INSTAGRAM_QUARANTINE_UNTIL =
+            "com.warvis.android.doom.EXTRA_INSTAGRAM_QUARANTINE_UNTIL"
     }
 
     internal sealed interface PaymentStatus {
@@ -283,6 +291,7 @@ private fun DoomShieldInterventionScreen(
     suggestionTitle: String?,
     suggestionBucket: String?,
     curfewLabel: String?,
+    instagramQuarantineUntilEpochMillis: Long?,
     onOpenKindle: () -> Unit,
     onOpenBacklog: () -> Unit,
     onOpenTaskRatchetSetup: () -> Unit,
@@ -313,6 +322,14 @@ private fun DoomShieldInterventionScreen(
         }
         nowMillis = System.currentTimeMillis()
     }
+    LaunchedEffect(instagramQuarantineUntilEpochMillis) {
+        val deadline = instagramQuarantineUntilEpochMillis ?: return@LaunchedEffect
+        while (System.currentTimeMillis() < deadline) {
+            nowMillis = System.currentTimeMillis()
+            delay(250L)
+        }
+        nowMillis = System.currentTimeMillis()
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -323,13 +340,25 @@ private fun DoomShieldInterventionScreen(
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = "Doom Shield caught $targetLabel",
+                text = if (instagramQuarantineUntilEpochMillis != null) {
+                    "Instagram quarantine"
+                } else {
+                    "Doom Shield caught $targetLabel"
+                },
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (curfewLabel != null) {
+            if (instagramQuarantineUntilEpochMillis != null) {
+                Text(
+                    text = "Your paid gaming allowance was used. Instagram is blocked in both " +
+                        "the app and supported browsers until quarantine ends.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Bold,
+                )
+            } else if (curfewLabel != null) {
                 Text(
                     text = "🌙 It's within your $curfewLabel night curfew — time to sleep, not scroll.",
                     style = MaterialTheme.typography.bodyLarge,
@@ -387,7 +416,29 @@ private fun DoomShieldInterventionScreen(
                 Text("Open Backlog in WARVIS")
             }
             Spacer(modifier = Modifier.height(12.dp))
-            if (coolingOffStartedAtMillis == null) {
+            if (instagramQuarantineUntilEpochMillis != null) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                    ),
+                ) {
+                    Text(
+                        modifier = Modifier.padding(16.dp),
+                        text = if (nowMillis >= instagramQuarantineUntilEpochMillis) {
+                            "This block interval ended. Return to Instagram; WARVIS will " +
+                                "reconcile whether the paid session resumes or has ended."
+                        } else {
+                            "Quarantine remaining: ${
+                                ((instagramQuarantineUntilEpochMillis - nowMillis)
+                                    .coerceAtLeast(0L) + 999L) / 1_000L
+                            } seconds. Generic overrides cannot bypass quarantine."
+                        },
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            } else if (coolingOffStartedAtMillis == null) {
                 OutlinedButton(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = {

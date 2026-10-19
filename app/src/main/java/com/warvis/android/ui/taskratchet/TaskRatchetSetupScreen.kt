@@ -67,8 +67,8 @@ internal fun TaskRatchetSetupScreen(
             title = { Text("Enable immediate live charges?") },
             text = {
                 Text(
-                    "Each confirmed blocked-target 15-minute override and each confirmed request " +
-                        "to open Settings to disable Doom Shield will immediately charge " +
+                    "Each confirmed blocked-target 15-minute override, Instagram gaming session, " +
+                        "and request to open Settings to disable Doom Shield will immediately charge " +
                         "$TASK_RATCHET_AMOUNT_LABEL. Charges count toward your TaskRatchet " +
                         "monthly API charge limit. This does not make Doom Shield tamper-proof.",
                 )

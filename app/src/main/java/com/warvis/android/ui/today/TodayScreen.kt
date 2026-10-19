@@ -36,6 +36,7 @@ internal fun TodayScreen(
     onToggleBedtime: (Boolean) -> Unit,
     onOpenNightExemptions: () -> Unit,
     onOpenTaskRatchetSetup: () -> Unit,
+    onOpenInstagramGaming: () -> Unit,
     nightCurfewSchedule: NightCurfewSchedule,
     doomShieldEnabled: Boolean,
     onDoomShieldAction: () -> DoomShieldSettingsLaunchResult?,
@@ -113,7 +114,8 @@ internal fun TodayScreen(
                 Text(
                     text = "Requires Android Accessibility permission. Matching happens locally; " +
                         "WARVIS does not store full URLs. TaskRatchet gates target-specific " +
-                        "15-minute overrides and requests to disable Doom Shield.",
+                        "15-minute overrides, Instagram gaming sessions, and requests to " +
+                        "disable Doom Shield.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -157,6 +159,9 @@ internal fun TodayScreen(
                 }
                 Button(onClick = onOpenNightExemptions) {
                     Text("Configure night curfew and exemptions")
+                }
+                Button(onClick = onOpenInstagramGaming) {
+                    Text("Configure Instagram gaming session")
                 }
                 Button(onClick = onOpenTaskRatchetSetup) {
                     Text("Set up TaskRatchet payments")

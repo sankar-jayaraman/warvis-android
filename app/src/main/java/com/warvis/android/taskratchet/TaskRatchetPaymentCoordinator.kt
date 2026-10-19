@@ -37,11 +37,17 @@ internal class TaskRatchetPaymentCoordinator(
         return if (attempt.dryRun) TaskRatchetMode.DryRun else TaskRatchetMode.Live
     }
 
+    fun unresolvedAttempt(
+        purpose: TaskRatchetPurpose,
+        targetKey: String?,
+    ): TaskRatchetAttempt? = attemptRepository.unresolved(purpose, targetKey)
+
     suspend fun execute(
         purpose: TaskRatchetPurpose,
         targetKey: String?,
         note: String,
-        grantBenefit: () -> Boolean,
+        benefitBinding: String? = null,
+        grantBenefit: (TaskRatchetAttempt) -> Boolean,
     ): TaskRatchetPaymentResult {
         val prepared = synchronized(TaskRatchetProcessLock.monitor) {
             val existing = attemptRepository.unresolved(purpose, targetKey)
@@ -75,6 +81,7 @@ internal class TaskRatchetPaymentCoordinator(
                         credentialGenerationId =
                             requireNotNull(configuration.credentialGenerationId),
                         note = note,
+                        benefitBinding = benefitBinding,
                     )
                 ) {
                     TaskRatchetAttemptWriteResult.Failure ->
@@ -126,7 +133,7 @@ internal class TaskRatchetPaymentCoordinator(
                 }
             }
 
-            if (!grantBenefit()) {
+            if (!grantBenefit(prepared.attempt)) {
                 return TaskRatchetPaymentResult.BenefitPending(prepared.attempt.dryRun)
             }
             if (!attemptRepository.complete(prepared.attempt)) {
@@ -154,6 +161,7 @@ internal fun taskRatchetNote(
     targetKey: String?,
 ): String = when (purpose) {
     TaskRatchetPurpose.DoomShieldDisable -> "WARVIS Doom Shield disable"
+    TaskRatchetPurpose.InstagramGamingSession -> "WARVIS Instagram gaming session"
     TaskRatchetPurpose.BlockedTargetOverride -> {
         val safeTarget = targetKey
             ?.removePrefix("domain:")

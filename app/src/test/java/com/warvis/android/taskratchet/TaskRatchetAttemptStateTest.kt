@@ -76,6 +76,7 @@ class TaskRatchetAttemptStateTest {
             accountUserId = xAttempt.accountUserId,
             credentialGenerationId = xAttempt.credentialGenerationId,
             note = xAttempt.note,
+            benefitBinding = null,
             newRequestId = { "request-test-first" },
         )
         val (secondState, second) = firstState.getOrCreate(
@@ -85,6 +86,7 @@ class TaskRatchetAttemptStateTest {
             accountUserId = xAttempt.accountUserId,
             credentialGenerationId = xAttempt.credentialGenerationId,
             note = xAttempt.note,
+            benefitBinding = null,
             newRequestId = { "request-test-second" },
         )
 
@@ -263,5 +265,40 @@ class TaskRatchetAttemptStateTest {
         assertEquals("WARVIS Doom Shield disable", disableNote)
         assertTrue(blockedNote.length <= 160)
         assertFalse(blockedNote.contains("/watch"))
+    }
+
+    @Test
+    fun instagramGamingAttemptKeepsFirstImmutableBenefitBinding() {
+        val state = TaskRatchetAttemptState()
+        val (firstState, first) = state.getOrCreate(
+            purpose = TaskRatchetPurpose.InstagramGamingSession,
+            targetKey = "instagram-gaming:app:com.instagram.android+domain:instagram.com",
+            dryRun = false,
+            accountUserId = "user-test",
+            credentialGenerationId = "generation-test",
+            note = "WARVIS Instagram gaming session",
+            benefitBinding = "1|session-first|180|3|5",
+            newRequestId = { "request-instagram" },
+        )
+        val (_, retry) = firstState.getOrCreate(
+            purpose = TaskRatchetPurpose.InstagramGamingSession,
+            targetKey = first.targetKey,
+            dryRun = false,
+            accountUserId = "user-test",
+            credentialGenerationId = "generation-test",
+            note = "WARVIS Instagram gaming session",
+            benefitBinding = "1|session-changed|720|30|60",
+            newRequestId = { "request-must-not-be-used" },
+        )
+
+        assertEquals("request-instagram", retry.requestId)
+        assertEquals("1|session-first|180|3|5", retry.benefitBinding)
+        assertEquals(
+            "WARVIS Instagram gaming session",
+            taskRatchetNote(
+                TaskRatchetPurpose.InstagramGamingSession,
+                first.targetKey,
+            ),
+        )
     }
 }

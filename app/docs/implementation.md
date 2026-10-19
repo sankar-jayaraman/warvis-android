@@ -56,6 +56,37 @@ configuration defaults to dry-run. The coordinator persists an idempotent attemp
 TaskRatchet, persists remote success before granting an entitlement or disable authorization, and
 keeps confirmed attempts for recovery when local follow-through fails.
 
+The optional Instagram gaming section creates a dedicated US$4 TaskRatchet purchase rather than
+reusing the generic 15-minute override. Defaults are a 180-minute overall session, 3 cumulative
+foreground minutes between quarantines, and a 5-minute quarantine. Validated bounds are:
+session `15..720`, allowance `1..30`, and quarantine `1..60` minutes. Session and quarantine
+deadlines are start-inclusive/end-exclusive; reaching the allowance boundary blocks immediately.
+All minute-to-millisecond conversions are checked and all persisted session data is committed as
+one versioned SharedPreferences record.
+
+While canonical native or browser Instagram is foreground, the accessibility service accumulates
+`SystemClock.elapsedRealtime()` deltas and schedules one generation-guarded callback at the
+earlier of the allowance/session boundary or a 15-second checkpoint. The atomic session record
+stores the same-boot active-segment boot ID, start, latest checkpoint, and consumed-usage snapshot.
+Lifecycle callbacks settle and clear the segment. After unexpected process loss, same-boot
+recovery consumes that checkpoint exactly once and charges at most one 15-second tail; any longer
+unknown downtime is excluded.
+Transitions are derived from `rootInActiveWindow`, not the accessibility event's package, so
+notification, keyboard, overlay, and background-package events cannot cancel a still-active
+Instagram meter. Browser URL changes are reclassified from the active tree even within the same
+browser package. Screen-off settles the current segment and clears the timer; unlock and service
+recreation resume only after a fresh canonical active-window observation.
+
+The atomic record persists the Android boot count plus elapsed session/quarantine deadlines.
+Within one boot these monotonic deadlines override wall-clock changes. Across reboot, reconciliation
+uses persisted trusted remaining durations. A backward wall adjustment preserves, but never
+increases, those trusted values. Plausible forward progress subtracts elapsed epoch evidence.
+Forward changes beyond six hours are treated as an untrusted clock jump and preserve the trusted
+session/quarantine remainder rather than immediately destroying a purchase or shortening
+quarantine. Re-anchoring to the new boot's elapsed clock then guarantees eventual expiry and is
+always capped by the last trusted remainder and original configured duration. At quarantine, both
+canonical forms remain blocked before paid-session or generic-grace checks.
+
 `NightCurfewSchedule` and `NightCurfewPolicy` are Android-free immutable policy types. Minute-of-day
 values are constrained to `0..1439`; enabled schedules support same-day and cross-midnight
 start-inclusive/end-exclusive intervals. `NightCurfewRepository` reads one SharedPreferences

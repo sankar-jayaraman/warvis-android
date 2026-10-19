@@ -8,6 +8,7 @@ import java.util.UUID
 internal enum class TaskRatchetPurpose {
     BlockedTargetOverride,
     DoomShieldDisable,
+    InstagramGamingSession,
 }
 
 internal enum class TaskRatchetAttemptStatus {
@@ -25,6 +26,7 @@ internal data class TaskRatchetAttempt(
     val note: String,
     val status: TaskRatchetAttemptStatus,
     val remoteChargeId: String? = null,
+    val benefitBinding: String? = null,
 )
 
 internal data class TaskRatchetAttemptState(
@@ -51,6 +53,7 @@ internal data class TaskRatchetAttemptState(
         accountUserId: String,
         credentialGenerationId: String,
         note: String,
+        benefitBinding: String?,
         newRequestId: () -> String,
     ): Pair<TaskRatchetAttemptState, TaskRatchetAttempt> {
         unresolved(purpose, targetKey)?.let { return this to it }
@@ -63,6 +66,7 @@ internal data class TaskRatchetAttemptState(
             credentialGenerationId = credentialGenerationId,
             note = note.take(TaskRatchetAttemptRepository.MAX_NOTE_LENGTH),
             status = TaskRatchetAttemptStatus.Pending,
+            benefitBinding = benefitBinding?.take(TaskRatchetAttemptRepository.MAX_BINDING_LENGTH),
         )
         return withAttempt(attempt) to attempt
     }
@@ -188,7 +192,11 @@ internal class TaskRatchetAttemptRepository(context: Context) {
         accountUserId: String,
         credentialGenerationId: String,
         note: String,
+        benefitBinding: String? = null,
     ): TaskRatchetAttemptWriteResult = synchronized(TaskRatchetProcessLock.monitor) {
+        if (!isValidBenefitBinding(purpose, benefitBinding)) {
+            return TaskRatchetAttemptWriteResult.Failure
+        }
         val current = readState() ?: return TaskRatchetAttemptWriteResult.Failure
         val (updated, attempt) = current.getOrCreate(
             purpose = purpose,
@@ -197,6 +205,7 @@ internal class TaskRatchetAttemptRepository(context: Context) {
             accountUserId = accountUserId,
             credentialGenerationId = credentialGenerationId,
             note = note.take(MAX_NOTE_LENGTH),
+            benefitBinding = benefitBinding,
             newRequestId = { UUID.randomUUID().toString() },
         )
         if (updated === current) {
@@ -268,38 +277,45 @@ internal class TaskRatchetAttemptRepository(context: Context) {
             val raw =
                 preferences.getString(KEY_ATTEMPTS, null) ?: return TaskRatchetAttemptState()
             val array = JSONArray(raw)
-            val attempts = buildList {
-                for (index in 0 until array.length()) {
-                    val json = array.getJSONObject(index)
-                    add(
-                        TaskRatchetAttempt(
-                            requestId = json.getString("requestId"),
-                            purpose = TaskRatchetPurpose.valueOf(json.getString("purpose")),
-                            targetKey = if (json.isNull("targetKey")) {
-                                null
-                            } else {
-                                json.getString("targetKey")
-                            },
-                            dryRun = json.getBoolean("dryRun"),
-                            accountUserId = json.getString("accountUserId"),
-                            credentialGenerationId =
-                                json.getString("credentialGenerationId"),
-                            note = json.getString("note"),
-                            status = TaskRatchetAttemptStatus.valueOf(json.getString("status")),
-                            remoteChargeId = if (json.isNull("remoteChargeId")) {
-                                null
-                            } else {
-                                json.getString("remoteChargeId")
-                            },
-                        ),
-                    )
-                }
+            val attempts = mutableListOf<TaskRatchetAttempt>()
+            for (index in 0 until array.length()) {
+                val json = array.getJSONObject(index)
+                val schemaVersion = json.optInt("schemaVersion", 1)
+                if (schemaVersion !in 1..ATTEMPT_SCHEMA_VERSION) return null
+                val purpose = TaskRatchetPurpose.valueOf(json.getString("purpose"))
+                val benefitBinding = json.optionalString("benefitBinding")
+                if (!isValidBenefitBinding(purpose, benefitBinding)) return null
+                attempts += TaskRatchetAttempt(
+                    requestId = json.getString("requestId"),
+                    purpose = purpose,
+                    targetKey = json.optionalString("targetKey"),
+                    dryRun = json.getBoolean("dryRun"),
+                    accountUserId = json.getString("accountUserId"),
+                    credentialGenerationId =
+                        json.getString("credentialGenerationId"),
+                    note = json.getString("note"),
+                    status = TaskRatchetAttemptStatus.valueOf(json.getString("status")),
+                    remoteChargeId = json.optionalString("remoteChargeId"),
+                    benefitBinding = benefitBinding,
+                )
             }
             TaskRatchetAttemptState(attempts)
         } catch (_: RuntimeException) {
             null
         }
     }
+
+    private fun isValidBenefitBinding(
+        purpose: TaskRatchetPurpose,
+        benefitBinding: String?,
+    ): Boolean =
+        (benefitBinding == null ||
+            benefitBinding.length <= TaskRatchetAttemptRepository.MAX_BINDING_LENGTH) &&
+            (purpose != TaskRatchetPurpose.InstagramGamingSession ||
+                !benefitBinding.isNullOrBlank())
+
+    private fun JSONObject.optionalString(name: String): String? =
+        if (!has(name) || isNull(name)) null else getString(name)
 
     private fun persist(state: TaskRatchetAttemptState): Boolean {
         val array = JSONArray()
@@ -314,7 +330,9 @@ internal class TaskRatchetAttemptRepository(context: Context) {
                     .put("credentialGenerationId", attempt.credentialGenerationId)
                     .put("note", attempt.note)
                     .put("status", attempt.status.name)
-                    .put("remoteChargeId", attempt.remoteChargeId),
+                    .put("remoteChargeId", attempt.remoteChargeId)
+                    .put("benefitBinding", attempt.benefitBinding)
+                    .put("schemaVersion", ATTEMPT_SCHEMA_VERSION),
             )
         }
         return preferences.edit().putString(KEY_ATTEMPTS, array.toString()).commit()
@@ -324,5 +342,7 @@ internal class TaskRatchetAttemptRepository(context: Context) {
         const val PREFERENCES_NAME = "task_ratchet_attempts"
         const val KEY_ATTEMPTS = "unresolved_attempts"
         const val MAX_NOTE_LENGTH = 160
+        const val MAX_BINDING_LENGTH = 512
+        const val ATTEMPT_SCHEMA_VERSION = 2
     }
 }

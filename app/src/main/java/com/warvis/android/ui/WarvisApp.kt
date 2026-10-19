@@ -25,11 +25,13 @@ import com.warvis.android.doom.DoomShieldControlAction
 import com.warvis.android.doom.DoomShieldControlPolicy
 import com.warvis.android.doom.DoomShieldSettingsGateway
 import com.warvis.android.doom.NightCurfewRepository
+import com.warvis.android.doom.InstagramGamingRepository
 import com.warvis.android.taskratchet.TaskRatchetConfigurationRepository
 import com.warvis.android.taskratchet.TaskRatchetPaymentCoordinator
 import com.warvis.android.ui.backlog.BacklogScreen
 import com.warvis.android.ui.doom.DoomShieldDisableCommitmentScreen
 import com.warvis.android.ui.doom.NightExemptionsScreen
+import com.warvis.android.ui.doom.InstagramGamingScreen
 import com.warvis.android.ui.reports.ReportsScreen
 import com.warvis.android.ui.journey.JourneyMapScreen
 import com.warvis.android.ui.knowledge.KnowledgeRingsScreen
@@ -52,6 +54,9 @@ internal fun WarvisApp(
     val bedtimeRepository = remember { BedtimeRepository(applicationContext) }
     val bedtimeEnabled by bedtimeRepository.enabled.collectAsStateWithLifecycle()
     val nightCurfewRepository = remember { NightCurfewRepository(applicationContext) }
+    val instagramGamingRepository = remember {
+        InstagramGamingRepository(applicationContext)
+    }
     var nightCurfewSchedule by remember {
         mutableStateOf(nightCurfewRepository.readSnapshot())
     }
@@ -71,6 +76,7 @@ internal fun WarvisApp(
     }
     var showingNightExemptions by rememberSaveable { mutableStateOf(false) }
     var showingDisableCommitment by rememberSaveable { mutableStateOf(false) }
+    var showingInstagramGaming by rememberSaveable { mutableStateOf(false) }
     var showingTaskRatchetSetup by rememberSaveable {
         mutableStateOf(destinationRequest?.showTaskRatchetSetup == true)
     }
@@ -80,6 +86,7 @@ internal fun WarvisApp(
         destinationRequest?.let {
             showingNightExemptions = false
             showingDisableCommitment = false
+            showingInstagramGaming = false
             showingTaskRatchetSetup = it.showTaskRatchetSetup
             destination = it.destination
         }
@@ -95,6 +102,7 @@ internal fun WarvisApp(
         enabled = safeExitToHome &&
             !showingNightExemptions &&
             !showingDisableCommitment &&
+            !showingInstagramGaming &&
             !showingTaskRatchetSetup,
     ) {
         context.startActivity(
@@ -109,6 +117,7 @@ internal fun WarvisApp(
             if (
                 !showingNightExemptions &&
                 !showingDisableCommitment &&
+                !showingInstagramGaming &&
                 !showingTaskRatchetSetup
             ) {
                 NavigationBar {
@@ -130,6 +139,17 @@ internal fun WarvisApp(
                     configuration = taskRatchetConfiguration,
                     repository = taskRatchetRepository,
                     onBack = { showingTaskRatchetSetup = false },
+                )
+            } else if (showingInstagramGaming) {
+                InstagramGamingScreen(
+                    repository = instagramGamingRepository,
+                    paymentCoordinator = taskRatchetPaymentCoordinator,
+                    taskRatchetConfiguration = taskRatchetConfiguration,
+                    onOpenTaskRatchetSetup = {
+                        showingInstagramGaming = false
+                        showingTaskRatchetSetup = true
+                    },
+                    onBack = { showingInstagramGaming = false },
                 )
             } else if (showingDisableCommitment) {
                 DoomShieldDisableCommitmentScreen(
@@ -158,6 +178,7 @@ internal fun WarvisApp(
                     onToggleBedtime = bedtimeRepository::setEnabled,
                     onOpenNightExemptions = { showingNightExemptions = true },
                     onOpenTaskRatchetSetup = { showingTaskRatchetSetup = true },
+                    onOpenInstagramGaming = { showingInstagramGaming = true },
                     nightCurfewSchedule = nightCurfewSchedule,
                     doomShieldEnabled = doomShieldEnabled,
                     onDoomShieldAction = {

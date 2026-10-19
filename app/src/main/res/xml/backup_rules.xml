@@ -4,4 +4,5 @@
     <exclude domain="sharedpref" path="task_ratchet_credentials.xml"/>
     <exclude domain="sharedpref" path="task_ratchet_configuration.xml"/>
     <exclude domain="sharedpref" path="task_ratchet_attempts.xml"/>
+    <exclude domain="sharedpref" path="instagram_gaming.xml"/>
 </full-backup-content>
