@@ -53,7 +53,7 @@ internal data class InstagramGamingConfig(
     }
 }
 
-internal data class InstagramGamingPurchaseSnapshot(
+internal data class InstagramGamingActivationSnapshot(
     val sessionId: String,
     val config: InstagramGamingConfig,
 ) {
@@ -72,12 +72,12 @@ internal data class InstagramGamingPurchaseSnapshot(
     companion object {
         private const val PURCHASE_SCHEMA_VERSION = "1"
 
-        fun create(config: InstagramGamingConfig): InstagramGamingPurchaseSnapshot {
+        fun create(config: InstagramGamingConfig): InstagramGamingActivationSnapshot {
             require(config.isValid)
-            return InstagramGamingPurchaseSnapshot(UUID.randomUUID().toString(), config)
+            return InstagramGamingActivationSnapshot(UUID.randomUUID().toString(), config)
         }
 
-        fun decode(raw: String?): InstagramGamingPurchaseSnapshot? {
+        fun decode(raw: String?): InstagramGamingActivationSnapshot? {
             val parts = raw?.split('|') ?: return null
             if (parts.size != 5 || parts[0] != PURCHASE_SCHEMA_VERSION) return null
             val config = InstagramGamingConfig(
@@ -85,7 +85,7 @@ internal data class InstagramGamingPurchaseSnapshot(
                 allowanceMinutes = parts[3].toIntOrNull() ?: return null,
                 quarantineMinutes = parts[4].toIntOrNull() ?: return null,
             )
-            return InstagramGamingPurchaseSnapshot(
+            return InstagramGamingActivationSnapshot(
                 sessionId = parts[1].takeIf(::isValidSessionId) ?: return null,
                 config = config.takeIf { it.isValid } ?: return null,
             )
@@ -93,8 +93,11 @@ internal data class InstagramGamingPurchaseSnapshot(
     }
 }
 
+@Deprecated("Legacy TaskRatchet binding compatibility only")
+internal typealias InstagramGamingPurchaseSnapshot = InstagramGamingActivationSnapshot
+
 internal data class InstagramGamingSession(
-    val purchase: InstagramGamingPurchaseSnapshot,
+    val purchase: InstagramGamingActivationSnapshot,
     val taskRatchetRequestId: String,
     val startedAtEpochMillis: Long,
     val deadlineEpochMillis: Long,
@@ -135,6 +138,8 @@ internal data class InstagramGamingStatus(
 )
 
 internal object InstagramGamingPolicy {
+    const val ACTIVATION_REVIEW_MILLIS = 10_000L
+
     fun status(
         configured: InstagramGamingConfig,
         session: InstagramGamingSession?,
@@ -178,6 +183,15 @@ internal object InstagramGamingPolicy {
     ): InstagramGamingSession? {
         return InstagramGamingClockPolicy.reconcile(session, clock)
     }
+}
+
+internal fun instagramActivationReviewRemainingMillis(
+    startedAtElapsedRealtimeMillis: Long,
+    nowElapsedRealtimeMillis: Long,
+): Long {
+    val elapsedMillis =
+        (nowElapsedRealtimeMillis - startedAtElapsedRealtimeMillis).coerceAtLeast(0L)
+    return (InstagramGamingPolicy.ACTIVATION_REVIEW_MILLIS - elapsedMillis).coerceAtLeast(0L)
 }
 
 internal object InstagramGamingClockPolicy {
@@ -441,7 +455,7 @@ internal object InstagramMeterCallbackPolicy {
 
 internal enum class InstagramAccessDecision {
     NotInstagram,
-    AllowPaidGaming,
+    AllowGamingSession,
     AllowGenericGrace,
     BlockQuarantine,
     BlockNormally,
@@ -460,7 +474,7 @@ internal object InstagramAccessPolicy {
             gamingPhase == InstagramGamingPhase.Quarantine ->
                 InstagramAccessDecision.BlockQuarantine
             gamingPhase == InstagramGamingPhase.Active ->
-                InstagramAccessDecision.AllowPaidGaming
+                InstagramAccessDecision.AllowGamingSession
             genericGraceActive -> InstagramAccessDecision.AllowGenericGrace
             else -> InstagramAccessDecision.BlockNormally
         }

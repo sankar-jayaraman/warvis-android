@@ -1,9 +1,9 @@
 package com.warvis.android.ui.doom
 
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,7 +13,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -24,45 +23,35 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.warvis.android.doom.DoomShieldPolicy
-import com.warvis.android.doom.INSTAGRAM_GAMING_PAYMENT_TARGET
+import com.warvis.android.doom.InstagramGamingActivationSnapshot
 import com.warvis.android.doom.InstagramGamingConfig
 import com.warvis.android.doom.InstagramGamingGrantResult
 import com.warvis.android.doom.InstagramGamingPhase
-import com.warvis.android.doom.InstagramGamingPurchaseSnapshot
+import com.warvis.android.doom.InstagramGamingPolicy
 import com.warvis.android.doom.InstagramGamingRepository
 import com.warvis.android.doom.InstagramGamingSaveResult
-import com.warvis.android.taskratchet.TASK_RATCHET_AMOUNT_LABEL
-import com.warvis.android.taskratchet.TaskRatchetConfiguration
-import com.warvis.android.taskratchet.TaskRatchetMode
-import com.warvis.android.taskratchet.TaskRatchetAttemptStatus
-import com.warvis.android.taskratchet.TaskRatchetPaymentCoordinator
-import com.warvis.android.taskratchet.TaskRatchetPaymentResult
-import com.warvis.android.taskratchet.TaskRatchetPurpose
-import com.warvis.android.taskratchet.taskRatchetNote
-import com.warvis.android.taskratchet.userMessage
+import com.warvis.android.doom.instagramActivationReviewRemainingMillis
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlin.math.max
+
+private data class InstagramActivationReview(
+    val reviewedTerms: InstagramGamingActivationSnapshot,
+    val startedAtElapsedRealtimeMillis: Long,
+)
 
 @Composable
 internal fun InstagramGamingScreen(
     repository: InstagramGamingRepository,
-    paymentCoordinator: TaskRatchetPaymentCoordinator,
-    taskRatchetConfiguration: TaskRatchetConfiguration,
-    onOpenTaskRatchetSetup: () -> Unit,
     onBack: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
-    val scope = rememberCoroutineScope()
-    var nowEpochMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var nowElapsedRealtimeMillis by remember {
+        mutableLongStateOf(SystemClock.elapsedRealtime())
+    }
     var status by remember { mutableStateOf(repository.status()) }
     var sessionMinutes by rememberSaveable {
         mutableStateOf(status.config.sessionMinutes.toString())
@@ -75,30 +64,19 @@ internal fun InstagramGamingScreen(
     }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     var activationInProgress by remember { mutableStateOf(false) }
-    var coolingOffStartedAtMillis by rememberSaveable { mutableStateOf<Long?>(null) }
-    var liveAcknowledged by rememberSaveable { mutableStateOf(false) }
-    val unresolvedAttempt = paymentCoordinator.unresolvedAttempt(
-        TaskRatchetPurpose.InstagramGamingSession,
-        INSTAGRAM_GAMING_PAYMENT_TARGET,
-    )
-    val pendingPurchase = InstagramGamingPurchaseSnapshot.decode(
-        unresolvedAttempt?.benefitBinding,
-    )
-    val displayMode = unresolvedAttempt?.let {
-        if (it.dryRun) TaskRatchetMode.DryRun else TaskRatchetMode.Live
-    } ?: taskRatchetConfiguration.mode
+    var activationReview by remember { mutableStateOf<InstagramActivationReview?>(null) }
     val draftConfig = InstagramGamingConfig(
         sessionMinutes = sessionMinutes.toConfigMinutes(),
         allowanceMinutes = allowanceMinutes.toConfigMinutes(),
         quarantineMinutes = quarantineMinutes.toConfigMinutes(),
     )
-    val coolingRemainingMillis = coolingOffStartedAtMillis?.let {
-        max(
-            0L,
-            DoomShieldPolicy.PAID_OVERRIDE_COOLING_OFF_MILLIS -
-                (System.currentTimeMillis() - it),
+    val reviewedTerms = activationReview?.reviewedTerms
+    val coolingRemainingMillis = activationReview?.let {
+        instagramActivationReviewRemainingMillis(
+            startedAtElapsedRealtimeMillis = it.startedAtElapsedRealtimeMillis,
+            nowElapsedRealtimeMillis = nowElapsedRealtimeMillis,
         )
-    } ?: DoomShieldPolicy.PAID_OVERRIDE_COOLING_OFF_MILLIS
+    } ?: InstagramGamingPolicy.ACTIVATION_REVIEW_MILLIS
     val statusLabel = when (status.phase) {
         InstagramGamingPhase.Inactive -> "Inactive"
         InstagramGamingPhase.Active -> "Active"
@@ -108,30 +86,30 @@ internal fun InstagramGamingScreen(
     val sessionActive = status.phase != InstagramGamingPhase.Inactive
     val canStartActivationReview =
         !sessionActive && draftConfig.isValid
+    val settingsEnabled = activationReview == null
     val canConfirmActivation =
         coolingRemainingMillis == 0L &&
             !activationInProgress &&
             !sessionActive &&
-            draftConfig.isValid &&
-            (displayMode != TaskRatchetMode.Live || liveAcknowledged) &&
-            (taskRatchetConfiguration.canCharge ||
-                unresolvedAttempt?.status == TaskRatchetAttemptStatus.RemoteConfirmed)
+            reviewedTerms?.config?.isValid == true
 
     LaunchedEffect(Unit) {
         while (true) {
-            nowEpochMillis = System.currentTimeMillis()
+            nowElapsedRealtimeMillis = SystemClock.elapsedRealtime()
             status = repository.status()
             delay(1_000L)
         }
     }
-    LaunchedEffect(coolingOffStartedAtMillis) {
-        val started = coolingOffStartedAtMillis ?: return@LaunchedEffect
+    LaunchedEffect(activationReview) {
+        val review = activationReview ?: return@LaunchedEffect
         while (
-            System.currentTimeMillis() - started <
-            DoomShieldPolicy.PAID_OVERRIDE_COOLING_OFF_MILLIS
+            instagramActivationReviewRemainingMillis(
+                startedAtElapsedRealtimeMillis = review.startedAtElapsedRealtimeMillis,
+                nowElapsedRealtimeMillis = SystemClock.elapsedRealtime(),
+            ) > 0L
         ) {
             delay(250L)
-            nowEpochMillis = System.currentTimeMillis()
+            nowElapsedRealtimeMillis = SystemClock.elapsedRealtime()
         }
     }
 
@@ -143,12 +121,13 @@ internal fun InstagramGamingScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = "Instagram gaming session",
+            text = "Instagram access",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
         )
         Text(
-            "A confirmed session permits only canonical Instagram app and browser targets. " +
+            "Temporarily permit canonical Instagram app and browser targets through " +
+                "Doom Shield for free. " +
                 "Foreground use is cumulative; quarantine blocks both forms and always wins.",
         )
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -184,97 +163,34 @@ internal fun InstagramGamingScreen(
             }
         }
         Text(
-            "Validated bounds: session 15-720 minutes, allowance 1-30 minutes, " +
-                "quarantine 1-60 minutes. Session end and quarantine end are exclusive; " +
-                "the allowance boundary is blocked immediately.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            text = "Free activation review",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
         )
-        OutlinedTextField(
-            modifier = Modifier.fillMaxWidth(),
-            value = sessionMinutes,
-            onValueChange = {
-                sessionMinutes = it.filter { character -> character.isDigit() }.take(4)
-            },
-            label = { Text("Session duration (minutes)") },
-            enabled = unresolvedAttempt == null,
-            singleLine = true,
-        )
-        OutlinedTextField(
-            modifier = Modifier.fillMaxWidth(),
-            value = allowanceMinutes,
-            onValueChange = {
-                allowanceMinutes = it.filter { character -> character.isDigit() }.take(2)
-            },
-            label = { Text("Foreground allowance (minutes)") },
-            enabled = unresolvedAttempt == null,
-            singleLine = true,
-        )
-        OutlinedTextField(
-            modifier = Modifier.fillMaxWidth(),
-            value = quarantineMinutes,
-            onValueChange = {
-                quarantineMinutes = it.filter { character -> character.isDigit() }.take(2)
-            },
-            label = { Text("Quarantine duration (minutes)") },
-            enabled = unresolvedAttempt == null,
-            singleLine = true,
-        )
-        draftConfig.validationError?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-        }
-        Button(
-            enabled = draftConfig.isValid && unresolvedAttempt == null,
-            onClick = {
-                message = when (val result = repository.saveConfig(draftConfig)) {
-                    InstagramGamingSaveResult.Persisted -> "Configuration saved."
-                    is InstagramGamingSaveResult.Invalid -> result.message
-                    InstagramGamingSaveResult.PersistenceFailed ->
-                        "WARVIS could not save the configuration."
-                }
-                status = repository.status()
-            },
-        ) {
-            Text("Save configuration")
-        }
-        if (pendingPurchase != null) {
+        if (reviewedTerms != null) {
             Text(
-                "Pending purchase is locked to ${pendingPurchase.config.sessionMinutes} / " +
-                    "${pendingPurchase.config.allowanceMinutes} / " +
-                    "${pendingPurchase.config.quarantineMinutes} minutes. Settings cannot " +
-                    "change this attempt.",
+                "Reviewed terms are locked to ${reviewedTerms.config.sessionMinutes} minutes " +
+                    "overall, ${reviewedTerms.config.allowanceMinutes} foreground minutes, " +
+                    "and ${reviewedTerms.config.quarantineMinutes} quarantine minutes. " +
+                    "Cancel the review to change them.",
                 fontWeight = FontWeight.Bold,
             )
         }
-        Text("Amount: $TASK_RATCHET_AMOUNT_LABEL", fontWeight = FontWeight.Bold)
         Text(
-            if (displayMode == TaskRatchetMode.Live) {
-                "Live mode: TaskRatchet charges US$4 immediately after confirmation."
-            } else {
-                "Dry-run mode: TaskRatchet validates the flow without charging money."
-            },
+            "No payment or TaskRatchet setup is required. The 10-second review is a " +
+                "non-payment safeguard before access starts.",
         )
-        if (displayMode == TaskRatchetMode.Live) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = liveAcknowledged,
-                    onCheckedChange = { liveAcknowledged = it },
-                )
-                Text("I understand this confirmation immediately charges US$4.")
-            }
-        }
-        OutlinedButton(
-            modifier = Modifier.fillMaxWidth(),
-            onClick = onOpenTaskRatchetSetup,
-        ) {
-            Text("Open TaskRatchet setup")
-        }
-        if (coolingOffStartedAtMillis == null) {
+        if (activationReview == null) {
             Button(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = canStartActivationReview,
                 onClick = {
-                    coolingOffStartedAtMillis = System.currentTimeMillis()
+                    activationReview = InstagramActivationReview(
+                        reviewedTerms = repository.createActivationTerms(draftConfig),
+                        startedAtElapsedRealtimeMillis = SystemClock.elapsedRealtime(),
+                    )
+                    nowElapsedRealtimeMillis =
+                        checkNotNull(activationReview).startedAtElapsedRealtimeMillis
                     message = null
                 },
             ) {
@@ -295,59 +211,41 @@ internal fun InstagramGamingScreen(
                 onClick = {
                     activationInProgress = true
                     message = null
-                    val purchase = pendingPurchase
-                        ?: InstagramGamingPurchaseSnapshot.create(draftConfig)
-                    scope.launch {
-                        when (
-                            val result = paymentCoordinator.execute(
-                                purpose = TaskRatchetPurpose.InstagramGamingSession,
-                                targetKey = INSTAGRAM_GAMING_PAYMENT_TARGET,
-                                note = taskRatchetNote(
-                                    TaskRatchetPurpose.InstagramGamingSession,
-                                    INSTAGRAM_GAMING_PAYMENT_TARGET,
-                                ),
-                                benefitBinding = purchase.encode(),
-                                grantBenefit = { attempt ->
-                                    repository.grant(
-                                        taskRatchetRequestId = attempt.requestId,
-                                        encodedPurchase = attempt.benefitBinding,
-                                    ).grantsSession
-                                },
-                            )
-                        ) {
-                            is TaskRatchetPaymentResult.Granted -> {
-                                message = if (result.recovered) {
-                                    "Confirmed purchase recovered without another charge."
-                                } else if (result.dryRun) {
-                                    "Dry-run gaming session activated."
-                                } else {
-                                    "Paid Instagram gaming session activated."
-                                }
-                                coolingOffStartedAtMillis = null
-                                liveAcknowledged = false
-                            }
-                            is TaskRatchetPaymentResult.BenefitPending ->
-                                message = "Payment is confirmed, but local activation is pending. " +
-                                    "Retry to recover without another charge."
-                            TaskRatchetPaymentResult.AlreadyInProgress ->
-                                message = "This activation is already in progress."
-                            is TaskRatchetPaymentResult.Failure ->
-                                message = result.kind.userMessage()
+                    when (repository.activate(checkNotNull(reviewedTerms))) {
+                        InstagramGamingGrantResult.Granted -> {
+                            message = "Free Instagram access activated."
+                            activationReview = null
                         }
-                        status = repository.status()
-                        activationInProgress = false
+                        InstagramGamingGrantResult.AlreadyGranted ->
+                            message = "This Instagram activation was already applied."
+                        InstagramGamingGrantResult.ActiveSessionConflict ->
+                            message = "An Instagram access session is already active."
+                        InstagramGamingGrantResult.InvalidBinding ->
+                            message = "The reviewed activation terms are invalid. Start again."
+                        InstagramGamingGrantResult.PersistenceFailed ->
+                            message = "WARVIS could not persist the activation."
                     }
+                    status = repository.status()
+                    activationInProgress = false
                 },
             ) {
                 Text(
                     if (activationInProgress) {
-                        "Confirming…"
-                    } else if (displayMode == TaskRatchetMode.Live) {
-                        "Confirm live US$4 gaming session"
+                        "Activating…"
                     } else {
-                        "Confirm dry-run gaming session"
+                        "Confirm free Instagram access"
                     },
                 )
+            }
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !activationInProgress,
+                onClick = {
+                    activationReview = null
+                    message = null
+                },
+            ) {
+                Text("Cancel activation review")
             }
         }
         message?.let {
@@ -362,18 +260,76 @@ internal fun InstagramGamingScreen(
             )
         }
         Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Session settings",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            "Configure the next free activation. Validated bounds: session 15-720 minutes, " +
+                "allowance 1-30 minutes, quarantine 1-60 minutes. Session end and " +
+                "quarantine end are exclusive; the allowance boundary is blocked immediately.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            modifier = Modifier.fillMaxWidth(),
+            value = sessionMinutes,
+            onValueChange = {
+                sessionMinutes = it.digitsOnly(maxLength = 4)
+            },
+            label = { Text("Session duration (minutes)") },
+            enabled = settingsEnabled,
+            singleLine = true,
+        )
+        OutlinedTextField(
+            modifier = Modifier.fillMaxWidth(),
+            value = allowanceMinutes,
+            onValueChange = {
+                allowanceMinutes = it.digitsOnly(maxLength = 2)
+            },
+            label = { Text("Foreground allowance (minutes)") },
+            enabled = settingsEnabled,
+            singleLine = true,
+        )
+        OutlinedTextField(
+            modifier = Modifier.fillMaxWidth(),
+            value = quarantineMinutes,
+            onValueChange = {
+                quarantineMinutes = it.digitsOnly(maxLength = 2)
+            },
+            label = { Text("Quarantine duration (minutes)") },
+            enabled = settingsEnabled,
+            singleLine = true,
+        )
+        draftConfig.validationError?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+        }
+        Button(
+            enabled = draftConfig.isValid && settingsEnabled,
+            onClick = {
+                message = when (val result = repository.saveConfig(draftConfig)) {
+                    InstagramGamingSaveResult.Persisted -> "Configuration saved."
+                    is InstagramGamingSaveResult.Invalid -> result.message
+                    InstagramGamingSaveResult.PersistenceFailed ->
+                        "WARVIS could not save the configuration."
+                }
+                status = repository.status()
+            },
+        ) {
+            Text("Save session settings")
+        }
+        Spacer(modifier = Modifier.height(4.dp))
         OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = onBack) {
             Text("Back to WARVIS")
         }
     }
 }
 
-private val InstagramGamingGrantResult.grantsSession: Boolean
-    get() =
-        this == InstagramGamingGrantResult.Granted ||
-            this == InstagramGamingGrantResult.AlreadyGranted
-
 private fun String.toConfigMinutes(): Int = toIntOrNull() ?: Int.MIN_VALUE
+
+private fun String.digitsOnly(maxLength: Int): String =
+    filter(Char::isDigit).take(maxLength)
 
 private fun formatDuration(millis: Long): String {
     val totalSeconds = (millis.coerceAtLeast(0L) + 999L) / 1_000L

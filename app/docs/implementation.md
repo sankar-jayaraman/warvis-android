@@ -56,13 +56,17 @@ configuration defaults to dry-run. The coordinator persists an idempotent attemp
 TaskRatchet, persists remote success before granting an entitlement or disable authorization, and
 keeps confirmed attempts for recovery when local follow-through fails.
 
-The optional Instagram gaming section creates a dedicated US$4 TaskRatchet purchase rather than
-reusing the generic 15-minute override. Defaults are a 180-minute overall session, 3 cumulative
-foreground minutes between quarantines, and a 5-minute quarantine. Validated bounds are:
-session `15..720`, allowance `1..30`, and quarantine `1..60` minutes. Session and quarantine
-deadlines are start-inclusive/end-exclusive; reaching the allowance boundary blocks immediately.
-All minute-to-millisecond conversions are checked and all persisted session data is committed as
-one versioned SharedPreferences record.
+Today's Doom Shield card exposes a status-aware Instagram access action that opens the deliberate
+review flow; it never grants access directly. Instagram activation is free and does not read
+TaskRatchet configuration, create an attempt, submit a charge, or require payment acknowledgement.
+Starting the 10-second review creates an immutable versioned terms snapshot with a local UUID and
+locks settings until confirmation or cancellation. Confirmation grants exactly that snapshot
+through the repository's existing atomic, idempotent persistence path. Defaults are a 180-minute
+overall session, 3 cumulative foreground minutes between quarantines, and a 5-minute quarantine.
+Validated bounds are: session `15..720`, allowance `1..30`, and quarantine `1..60` minutes.
+Session and quarantine deadlines are start-inclusive/end-exclusive; reaching the allowance
+boundary blocks immediately. Persisted schema versions remain compatible with legacy paid
+Instagram sessions.
 
 While canonical native or browser Instagram is foreground, the accessibility service accumulates
 `SystemClock.elapsedRealtime()` deltas and schedules one generation-guarded callback at the
@@ -82,10 +86,10 @@ Within one boot these monotonic deadlines override wall-clock changes. Across re
 uses persisted trusted remaining durations. A backward wall adjustment preserves, but never
 increases, those trusted values. Plausible forward progress subtracts elapsed epoch evidence.
 Forward changes beyond six hours are treated as an untrusted clock jump and preserve the trusted
-session/quarantine remainder rather than immediately destroying a purchase or shortening
+session/quarantine remainder rather than immediately destroying an activation or shortening
 quarantine. Re-anchoring to the new boot's elapsed clock then guarantees eventual expiry and is
 always capped by the last trusted remainder and original configured duration. At quarantine, both
-canonical forms remain blocked before paid-session or generic-grace checks.
+canonical forms remain blocked before active-session or generic-grace checks.
 
 `NightCurfewSchedule` and `NightCurfewPolicy` are Android-free immutable policy types. Minute-of-day
 values are constrained to `0..1439`; enabled schedules support same-day and cross-midnight

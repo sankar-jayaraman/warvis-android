@@ -1,6 +1,9 @@
 package com.warvis.android.taskratchet
 
 import android.content.Context
+import com.warvis.android.doom.INSTAGRAM_GAMING_PAYMENT_TARGET
+import com.warvis.android.doom.InstagramGamingGrantResult
+import com.warvis.android.doom.InstagramGamingRepository
 
 internal sealed interface TaskRatchetPaymentResult {
     data class Granted(val dryRun: Boolean, val recovered: Boolean) : TaskRatchetPaymentResult
@@ -41,6 +44,29 @@ internal class TaskRatchetPaymentCoordinator(
         purpose: TaskRatchetPurpose,
         targetKey: String?,
     ): TaskRatchetAttempt? = attemptRepository.unresolved(purpose, targetKey)
+
+    fun recoverConfirmedInstagramGamingBenefit(
+        repository: InstagramGamingRepository,
+    ): Boolean {
+        val attempt = attemptRepository.unresolved(
+            TaskRatchetPurpose.InstagramGamingSession,
+            INSTAGRAM_GAMING_PAYMENT_TARGET,
+        ) ?: return false
+        if (!TaskRatchetLegacyInstagramRecoveryPolicy.canMaterialize(attempt)) {
+            return false
+        }
+        val granted = repository.grant(
+            taskRatchetRequestId = attempt.requestId,
+            encodedPurchase = attempt.benefitBinding,
+        )
+        if (
+            granted != InstagramGamingGrantResult.Granted &&
+            granted != InstagramGamingGrantResult.AlreadyGranted
+        ) {
+            return false
+        }
+        return attemptRepository.complete(attempt)
+    }
 
     suspend fun execute(
         purpose: TaskRatchetPurpose,
@@ -154,6 +180,14 @@ internal class TaskRatchetPaymentCoordinator(
         val recovered: Boolean,
         val lease: TaskRatchetExecutionLease,
     )
+}
+
+internal object TaskRatchetLegacyInstagramRecoveryPolicy {
+    fun canMaterialize(attempt: TaskRatchetAttempt): Boolean =
+        attempt.purpose == TaskRatchetPurpose.InstagramGamingSession &&
+            attempt.targetKey == INSTAGRAM_GAMING_PAYMENT_TARGET &&
+            attempt.status == TaskRatchetAttemptStatus.RemoteConfirmed &&
+            !attempt.benefitBinding.isNullOrBlank()
 }
 
 internal fun taskRatchetNote(

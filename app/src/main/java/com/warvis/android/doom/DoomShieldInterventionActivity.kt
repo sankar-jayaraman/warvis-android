@@ -352,7 +352,7 @@ private fun DoomShieldInterventionScreen(
 
             if (instagramQuarantineUntilEpochMillis != null) {
                 Text(
-                    text = "Your paid gaming allowance was used. Instagram is blocked in both " +
+                    text = "Your foreground allowance was used. Instagram is blocked in both " +
                         "the app and supported browsers until quarantine ends.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.error,
@@ -427,7 +427,7 @@ private fun DoomShieldInterventionScreen(
                         modifier = Modifier.padding(16.dp),
                         text = if (nowMillis >= instagramQuarantineUntilEpochMillis) {
                             "This block interval ended. Return to Instagram; WARVIS will " +
-                                "reconcile whether the paid session resumes or has ended."
+                                "reconcile whether the session resumes or has ended."
                         } else {
                             "Quarantine remaining: ${
                                 ((instagramQuarantineUntilEpochMillis - nowMillis)

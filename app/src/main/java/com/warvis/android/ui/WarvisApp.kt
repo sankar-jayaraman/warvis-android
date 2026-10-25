@@ -98,6 +98,12 @@ internal fun WarvisApp(
         }
     }
 
+    LaunchedEffect(taskRatchetPaymentCoordinator, instagramGamingRepository) {
+        taskRatchetPaymentCoordinator.recoverConfirmedInstagramGamingBenefit(
+            instagramGamingRepository,
+        )
+    }
+
     BackHandler(
         enabled = safeExitToHome &&
             !showingNightExemptions &&
@@ -143,12 +149,6 @@ internal fun WarvisApp(
             } else if (showingInstagramGaming) {
                 InstagramGamingScreen(
                     repository = instagramGamingRepository,
-                    paymentCoordinator = taskRatchetPaymentCoordinator,
-                    taskRatchetConfiguration = taskRatchetConfiguration,
-                    onOpenTaskRatchetSetup = {
-                        showingInstagramGaming = false
-                        showingTaskRatchetSetup = true
-                    },
                     onBack = { showingInstagramGaming = false },
                 )
             } else if (showingDisableCommitment) {
@@ -179,6 +179,7 @@ internal fun WarvisApp(
                     onOpenNightExemptions = { showingNightExemptions = true },
                     onOpenTaskRatchetSetup = { showingTaskRatchetSetup = true },
                     onOpenInstagramGaming = { showingInstagramGaming = true },
+                    instagramGamingRepository = instagramGamingRepository,
                     nightCurfewSchedule = nightCurfewSchedule,
                     doomShieldEnabled = doomShieldEnabled,
                     onDoomShieldAction = {

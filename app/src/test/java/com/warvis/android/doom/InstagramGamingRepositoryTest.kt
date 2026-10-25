@@ -2,13 +2,14 @@ package com.warvis.android.doom
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InstagramGamingRepositoryTest {
     private val config = InstagramGamingConfig(180, 3, 5)
-    private val purchase = InstagramGamingPurchaseSnapshot(
+    private val purchase = InstagramGamingActivationSnapshot(
         "22222222-2222-4222-8222-222222222222",
         config,
     )
@@ -28,6 +29,39 @@ class InstagramGamingRepositoryTest {
         assertNotNull(restored.session)
         assertTrue(persistence.raw.orEmpty().contains("42000"))
         assertTrue(persistence.raw.orEmpty().startsWith("3\t"))
+    }
+
+    @Test
+    fun freeActivationUsesUniqueImmutableReviewedTermsWithoutTaskRatchet() {
+        val persistence = FakeInstagramGamingPersistence()
+        val repository = InstagramGamingRepository(persistence)
+        val reviewedTerms = repository.createActivationTerms(config)
+        val laterDraft = config.copy(sessionMinutes = 720, allowanceMinutes = 30)
+        val otherTerms = repository.createActivationTerms(laterDraft)
+
+        val result = repository.activate(reviewedTerms, 10_000L)
+        val status = repository.status(10_001L)
+
+        assertEquals(InstagramGamingGrantResult.Granted, result)
+        assertEquals(config, status.session?.purchase?.config)
+        assertEquals(reviewedTerms.sessionId, status.session?.taskRatchetRequestId)
+        assertNotEquals(reviewedTerms.sessionId, otherTerms.sessionId)
+    }
+
+    @Test
+    fun freeActivationIsIdempotentForTheSameReviewedTerms() {
+        val persistence = FakeInstagramGamingPersistence()
+        val repository = InstagramGamingRepository(persistence)
+        val reviewedTerms = repository.createActivationTerms(config)
+
+        assertEquals(
+            InstagramGamingGrantResult.Granted,
+            repository.activate(reviewedTerms, 1_000L),
+        )
+        assertEquals(
+            InstagramGamingGrantResult.AlreadyGranted,
+            repository.activate(reviewedTerms, 2_000L),
+        )
     }
 
     @Test
@@ -72,7 +106,7 @@ class InstagramGamingRepositoryTest {
             InstagramGamingGrantResult.AlreadyGranted,
             repository.grant(
                 "request-once",
-                InstagramGamingPurchaseSnapshot(
+                InstagramGamingActivationSnapshot(
                     "33333333-3333-4333-8333-333333333333",
                     config,
                 ).encode(),
@@ -280,6 +314,14 @@ class InstagramGamingRepositoryTest {
         assertEquals(InstagramGamingPhase.Active, restored.phase)
         assertEquals(150_000L, restored.allowanceRemainingMillis)
         assertTrue(persistence.raw.orEmpty().startsWith("3\t"))
+    }
+
+    @Suppress("DEPRECATION")
+    @Test
+    fun legacyTaskRatchetBenefitBindingDecoderRemainsCompatible() {
+        val decoded = InstagramGamingPurchaseSnapshot.decode(purchase.encode())
+
+        assertEquals(purchase, decoded)
     }
 
     @Test

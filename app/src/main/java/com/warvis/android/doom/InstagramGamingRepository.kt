@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.SystemClock
 import android.provider.Settings
+import java.util.UUID
 
 internal sealed interface InstagramGamingSaveResult {
     data object Persisted : InstagramGamingSaveResult
@@ -95,6 +96,37 @@ internal class InstagramGamingRepository(
             }
         }
 
+    fun activate(
+        reviewedTerms: InstagramGamingActivationSnapshot,
+    ): InstagramGamingGrantResult =
+        activate(reviewedTerms, clockProvider())
+
+    fun activate(
+        reviewedTerms: InstagramGamingActivationSnapshot,
+        nowEpochMillis: Long,
+    ): InstagramGamingGrantResult =
+        activate(reviewedTerms, legacyClock(nowEpochMillis))
+
+    fun activate(
+        reviewedTerms: InstagramGamingActivationSnapshot,
+        clock: InstagramGamingClockReading,
+    ): InstagramGamingGrantResult {
+        if (!reviewedTerms.config.isValid || !isValidActivationId(reviewedTerms.sessionId)) {
+            return InstagramGamingGrantResult.InvalidBinding
+        }
+        return grantPersistedSession(
+            activationId = reviewedTerms.sessionId,
+            encodedTerms = reviewedTerms.encode(),
+            clock = clock,
+        )
+    }
+
+    fun createActivationTerms(
+        config: InstagramGamingConfig,
+    ): InstagramGamingActivationSnapshot =
+        InstagramGamingActivationSnapshot.create(config)
+
+    @Deprecated("Legacy TaskRatchet recovery only; new activations must use activate")
     fun grant(
         taskRatchetRequestId: String,
         encodedPurchase: String?,
@@ -112,14 +144,21 @@ internal class InstagramGamingRepository(
         taskRatchetRequestId: String,
         encodedPurchase: String?,
         clock: InstagramGamingClockReading,
+    ): InstagramGamingGrantResult =
+        grantPersistedSession(taskRatchetRequestId, encodedPurchase, clock)
+
+    private fun grantPersistedSession(
+        activationId: String,
+        encodedTerms: String?,
+        clock: InstagramGamingClockReading,
     ): InstagramGamingGrantResult = synchronized(MONITOR) {
-        val purchase = InstagramGamingPurchaseSnapshot.decode(encodedPurchase)
+        val purchase = InstagramGamingActivationSnapshot.decode(encodedTerms)
             ?: return InstagramGamingGrantResult.InvalidBinding
-        if (!isValidRequestId(taskRatchetRequestId)) {
+        if (!isValidRequestId(activationId)) {
             return InstagramGamingGrantResult.InvalidBinding
         }
         val current = reconcile(readValidatedState(), clock)
-        if (current.lastGrantedTaskRatchetRequestId == taskRatchetRequestId) {
+        if (current.lastGrantedTaskRatchetRequestId == activationId) {
             return InstagramGamingGrantResult.AlreadyGranted
         }
         if (current.session != null) {
@@ -134,7 +173,7 @@ internal class InstagramGamingRepository(
         val updated = current.copy(
             session = InstagramGamingSession(
                 purchase = purchase,
-                taskRatchetRequestId = taskRatchetRequestId,
+                taskRatchetRequestId = activationId,
                 startedAtEpochMillis = clock.epochMillis,
                 deadlineEpochMillis = deadlineEpoch,
                 bootId = clock.bootId,
@@ -142,7 +181,7 @@ internal class InstagramGamingRepository(
                 lastObservedEpochMillis = clock.epochMillis,
                 lastObservedSessionRemainingMillis = purchase.config.sessionDurationMillis,
             ),
-            lastGrantedTaskRatchetRequestId = taskRatchetRequestId,
+            lastGrantedTaskRatchetRequestId = activationId,
         )
         if (persist(updated)) {
             InstagramGamingGrantResult.Granted
@@ -615,7 +654,7 @@ internal object InstagramGamingStateCodec {
             if (parts.subList(6, 11).any(String::isNotEmpty)) return null
             return InstagramGamingStoredState(config, null, lastGranted)
         }
-        val purchase = InstagramGamingPurchaseSnapshot.decode(parts[5]) ?: return null
+        val purchase = InstagramGamingActivationSnapshot.decode(parts[5]) ?: return null
         val requestId = parts[6].takeIf(::isValidRequestId) ?: return null
         val started = parts[7].toLongOrNull()?.takeIf { it >= 0L } ?: return null
         val deadline = parts[8].toLongOrNull()?.takeIf { it > started } ?: return null
@@ -663,6 +702,13 @@ private fun InstagramGamingSession.withoutActiveSegment(): InstagramGamingSessio
 private fun isValidRequestId(value: String): Boolean =
     value.length in 1..128 &&
         value.all { it.isLetterOrDigit() || it == '-' || it == '_' || it == '.' || it == ':' }
+
+private fun isValidActivationId(value: String): Boolean =
+    try {
+        UUID.fromString(value).toString() == value.lowercase()
+    } catch (_: IllegalArgumentException) {
+        false
+    }
 
 private fun legacyClock(nowEpochMillis: Long): InstagramGamingClockReading =
     InstagramGamingClockReading(

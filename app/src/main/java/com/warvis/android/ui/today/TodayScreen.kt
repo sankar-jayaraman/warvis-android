@@ -11,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,12 +22,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.warvis.android.data.model.WarvisState
 import com.warvis.android.doom.DoomShieldSettingsLaunchResult
+import com.warvis.android.doom.InstagramGamingPhase
+import com.warvis.android.doom.InstagramGamingRepository
 import com.warvis.android.doom.NightCurfewSchedule
 import com.warvis.android.ui.components.ProgressBlock
 import com.warvis.android.ui.components.ScreenScaffold
 import com.warvis.android.ui.components.SectionTitle
 import com.warvis.android.ui.components.WarvisCard
 import com.warvis.android.ui.components.WarvisOutlinedCard
+import kotlinx.coroutines.delay
 
 @Composable
 internal fun TodayScreen(
@@ -37,11 +41,22 @@ internal fun TodayScreen(
     onOpenNightExemptions: () -> Unit,
     onOpenTaskRatchetSetup: () -> Unit,
     onOpenInstagramGaming: () -> Unit,
+    instagramGamingRepository: InstagramGamingRepository,
     nightCurfewSchedule: NightCurfewSchedule,
     doomShieldEnabled: Boolean,
     onDoomShieldAction: () -> DoomShieldSettingsLaunchResult?,
 ) {
     var doomShieldSettingsError by remember { mutableStateOf<String?>(null) }
+    var instagramGamingPhase by remember(instagramGamingRepository) {
+        mutableStateOf(instagramGamingRepository.status().phase)
+    }
+
+    LaunchedEffect(instagramGamingRepository) {
+        while (true) {
+            instagramGamingPhase = instagramGamingRepository.status().phase
+            delay(1_000L)
+        }
+    }
 
     ScreenScaffold(
         title = "WARVIS",
@@ -114,8 +129,8 @@ internal fun TodayScreen(
                 Text(
                     text = "Requires Android Accessibility permission. Matching happens locally; " +
                         "WARVIS does not store full URLs. TaskRatchet gates target-specific " +
-                        "15-minute overrides, Instagram gaming sessions, and requests to " +
-                        "disable Doom Shield.",
+                        "15-minute overrides and requests to disable Doom Shield. Instagram " +
+                        "access activation is free.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -132,6 +147,12 @@ internal fun TodayScreen(
                     },
                     fontWeight = FontWeight.Bold,
                 )
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onOpenInstagramGaming,
+                ) {
+                    Text(instagramGamingTodayActionLabel(instagramGamingPhase))
+                }
                 Button(
                     onClick = {
                         doomShieldSettingsError = when (onDoomShieldAction()) {
@@ -159,9 +180,6 @@ internal fun TodayScreen(
                 }
                 Button(onClick = onOpenNightExemptions) {
                     Text("Configure night curfew and exemptions")
-                }
-                Button(onClick = onOpenInstagramGaming) {
-                    Text("Configure Instagram gaming session")
                 }
                 Button(onClick = onOpenTaskRatchetSetup) {
                     Text("Set up TaskRatchet payments")
@@ -191,3 +209,10 @@ internal fun TodayScreen(
         }
     }
 }
+
+internal fun instagramGamingTodayActionLabel(phase: InstagramGamingPhase): String =
+    when (phase) {
+        InstagramGamingPhase.Inactive -> "Activate Instagram access"
+        InstagramGamingPhase.Active -> "Instagram access active — view time"
+        InstagramGamingPhase.Quarantine -> "Instagram quarantined — view status"
+    }

@@ -7,7 +7,7 @@ import org.junit.Test
 
 class InstagramGamingPolicyTest {
     private val config = InstagramGamingConfig()
-    private val purchase = InstagramGamingPurchaseSnapshot(
+    private val purchase = InstagramGamingActivationSnapshot(
         sessionId = "11111111-1111-4111-8111-111111111111",
         config = config,
     )
@@ -20,6 +20,7 @@ class InstagramGamingPolicyTest {
 
     @Test
     fun defaultsAndBoundsAreExplicitAndValidatedAtEdges() {
+        assertEquals(10_000L, InstagramGamingPolicy.ACTIVATION_REVIEW_MILLIS)
         assertEquals(180, config.sessionMinutes)
         assertEquals(3, config.allowanceMinutes)
         assertEquals(5, config.quarantineMinutes)
@@ -34,16 +35,68 @@ class InstagramGamingPolicyTest {
     }
 
     @Test
+    fun activationReviewUsesOnlyMonotonicElapsedTimeAtItsBoundaries() {
+        val startedAtElapsedRealtimeMillis = 50_000L
+
+        assertEquals(
+            10_000L,
+            instagramActivationReviewRemainingMillis(
+                startedAtElapsedRealtimeMillis,
+                startedAtElapsedRealtimeMillis,
+            ),
+        )
+        assertEquals(
+            1L,
+            instagramActivationReviewRemainingMillis(
+                startedAtElapsedRealtimeMillis,
+                startedAtElapsedRealtimeMillis + 9_999L,
+            ),
+        )
+        assertEquals(
+            0L,
+            instagramActivationReviewRemainingMillis(
+                startedAtElapsedRealtimeMillis,
+                startedAtElapsedRealtimeMillis + 10_000L,
+            ),
+        )
+        assertEquals(
+            0L,
+            instagramActivationReviewRemainingMillis(
+                startedAtElapsedRealtimeMillis,
+                startedAtElapsedRealtimeMillis + 20_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun wallClockChangesAreIrrelevantToActivationReviewRemainingTime() {
+        val changedWallClockValues = listOf(
+            1_000_000L,
+            1_000_000L + 86_400_000L,
+            1_000_000L - 86_400_000L,
+        )
+
+        changedWallClockValues.forEach { _ ->
+            assertEquals(
+                6_000L,
+                instagramActivationReviewRemainingMillis(
+                    startedAtElapsedRealtimeMillis = 100_000L,
+                    nowElapsedRealtimeMillis = 104_000L,
+                ),
+            )
+        }
+    }
+
+    @Test
     fun sessionDeadlineIsExclusiveAndQuarantineWinsUntilItsExclusiveDeadline() {
         val deadline = session.deadlineEpochMillis
-        assertEquals(
-            InstagramGamingPhase.Active,
-            InstagramGamingPolicy.status(
-                config,
-                session,
-                clock(deadline - 1L),
-            ).phase,
+        val beforeDeadline = InstagramGamingPolicy.status(
+            config,
+            session,
+            clock(deadline - 1L),
         )
+        assertEquals(InstagramGamingPhase.Active, beforeDeadline.phase)
+        assertEquals(config.allowanceDurationMillis, beforeDeadline.allowanceRemainingMillis)
         assertEquals(
             InstagramGamingPhase.Inactive,
             InstagramGamingPolicy.status(config, session, clock(deadline)).phase,
@@ -100,7 +153,7 @@ class InstagramGamingPolicyTest {
             ),
         )
         assertEquals(
-            InstagramAccessDecision.AllowPaidGaming,
+            InstagramAccessDecision.AllowGamingSession,
             InstagramAccessPolicy.decide(
                 INSTAGRAM_DOMAIN_TARGET_KEY,
                 InstagramGamingPhase.Active,
@@ -112,6 +165,14 @@ class InstagramGamingPolicyTest {
             InstagramAccessPolicy.decide(
                 "domain:youtube.com",
                 InstagramGamingPhase.Quarantine,
+                genericGraceActive = false,
+            ),
+        )
+        assertEquals(
+            InstagramAccessDecision.BlockNormally,
+            InstagramAccessPolicy.decide(
+                INSTAGRAM_APP_TARGET_KEY,
+                InstagramGamingPhase.Inactive,
                 genericGraceActive = false,
             ),
         )

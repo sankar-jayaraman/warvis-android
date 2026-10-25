@@ -301,4 +301,26 @@ class TaskRatchetAttemptStateTest {
             ),
         )
     }
+
+    @Test
+    fun onlyRemoteConfirmedLegacyInstagramAttemptCanMaterializeLocally() {
+        val prepared = TaskRatchetAttempt(
+            requestId = "request-instagram",
+            purpose = TaskRatchetPurpose.InstagramGamingSession,
+            targetKey = "instagram-gaming:app:com.instagram.android+domain:instagram.com",
+            dryRun = false,
+            accountUserId = "user-test",
+            credentialGenerationId = "generation-test",
+            note = "WARVIS Instagram gaming session",
+            status = TaskRatchetAttemptStatus.Pending,
+            benefitBinding = "1|11111111-1111-4111-8111-111111111111|180|3|5",
+        )
+
+        assertFalse(TaskRatchetLegacyInstagramRecoveryPolicy.canMaterialize(prepared))
+        assertTrue(
+            TaskRatchetLegacyInstagramRecoveryPolicy.canMaterialize(
+                prepared.copy(status = TaskRatchetAttemptStatus.RemoteConfirmed),
+            ),
+        )
+    }
 }

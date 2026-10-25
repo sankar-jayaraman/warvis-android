@@ -106,7 +106,7 @@ class DoomShieldAccessibilityService : AccessibilityService() {
                     DoomShieldGracePeriod.isActive(this, target.key, clock.epochMillis),
             )
         ) {
-            InstagramAccessDecision.AllowPaidGaming -> {
+            InstagramAccessDecision.AllowGamingSession -> {
                 if (initialStatus.allowanceRemainingMillis <= 0L) {
                     val quarantine = instagramGamingRepository.enterQuarantine(clock)
                     clearInstagramForegroundMeter()
