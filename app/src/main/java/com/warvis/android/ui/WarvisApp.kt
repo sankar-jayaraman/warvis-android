@@ -21,6 +21,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.warvis.android.bedtime.BedtimeRepository
 import com.warvis.android.data.BacklogRepository
 import com.warvis.android.data.WarvisRepository
+import com.warvis.android.dating.DatingSwipeRepository
 import com.warvis.android.doom.DoomShieldControlAction
 import com.warvis.android.doom.DoomShieldControlPolicy
 import com.warvis.android.doom.DoomShieldSettingsGateway
@@ -56,6 +57,9 @@ internal fun WarvisApp(
     val nightCurfewRepository = remember { NightCurfewRepository(applicationContext) }
     val instagramGamingRepository = remember {
         InstagramGamingRepository(applicationContext)
+    }
+    val datingSwipeRepository = remember {
+        DatingSwipeRepository(applicationContext)
     }
     var nightCurfewSchedule by remember {
         mutableStateOf(nightCurfewRepository.readSnapshot())
@@ -180,6 +184,7 @@ internal fun WarvisApp(
                     onOpenTaskRatchetSetup = { showingTaskRatchetSetup = true },
                     onOpenInstagramGaming = { showingInstagramGaming = true },
                     instagramGamingRepository = instagramGamingRepository,
+                    datingSwipeRepository = datingSwipeRepository,
                     nightCurfewSchedule = nightCurfewSchedule,
                     doomShieldEnabled = doomShieldEnabled,
                     onDoomShieldAction = {

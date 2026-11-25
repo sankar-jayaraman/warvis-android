@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">WARVIS</string>
     <string name="doom_shield_accessibility_label">WARVIS Doom Shield</string>
-    <string name="doom_shield_accessibility_summary">Detects distracting websites and apps, then redirects you to Kindle.</string>
-    <string name="doom_shield_accessibility_description">WARVIS Doom Shield uses Accessibility to detect distracting apps and supported browsers displaying blocked domains like Facebook, Instagram, YouTube, X, or Quora. It redirects you to Kindle and records the redirect locally for a weekly progress notification. Full URLs are not stored.</string>
+    <string name="doom_shield_accessibility_summary">Detects distracting apps and websites, redirects you to Kindle, and estimates daily dating-app Likes.</string>
+    <string name="doom_shield_accessibility_description">WARVIS Doom Shield uses Accessibility to detect distracting apps and supported browsers displaying blocked domains like Facebook, Instagram, YouTube, X, or Quora. It redirects you to Kindle and records the redirect locally for a weekly progress notification. It also records daily estimates of positive Like or heart actions in Hinge, Tinder, and Bumble. Profile text, names, images, messages, and full URLs are not stored.</string>
 </resources>

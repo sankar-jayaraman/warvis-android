@@ -16,12 +16,18 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import com.warvis.android.dating.DatingApp
+import com.warvis.android.dating.DatingAccessibilityObservation
+import com.warvis.android.dating.DatingSwipeDeduplicator
+import com.warvis.android.dating.DatingSwipeRepository
 import java.util.Calendar
 
 class DoomShieldAccessibilityService : AccessibilityService() {
     private val nightExemptionProvider by lazy { NightExemptionProvider(this) }
     private val nightCurfewRepository by lazy { NightCurfewRepository(this) }
     private val instagramGamingRepository by lazy { InstagramGamingRepository(this) }
+    private val datingSwipeRepository by lazy { DatingSwipeRepository(this) }
+    private val datingSwipeDeduplicator = DatingSwipeDeduplicator()
     private val handler = Handler(Looper.getMainLooper())
     private var instagramForegroundStartedAtElapsedMillis: Long? = null
     private var instagramForegroundTarget: DoomShieldTarget? = null
@@ -56,6 +62,7 @@ class DoomShieldAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event != null) recordDatingSwipe(event)
         if (event == null || !isRelevantWindowEvent(event.eventType)) return
         val activeWindow = currentActiveWindow()
         when (
@@ -347,6 +354,19 @@ class DoomShieldAccessibilityService : AccessibilityService() {
             instagramGamingRepository.reconcile(clock),
             clock,
         )
+    }
+
+    private fun recordDatingSwipe(event: AccessibilityEvent) {
+        if (event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED) return
+        if (DatingApp.fromPackageName(event.packageName?.toString()) == null) return
+        try {
+            val observation = DatingAccessibilityObservation.from(event)
+            datingSwipeDeduplicator
+                .accept(observation, SystemClock.elapsedRealtime())
+                ?.let(datingSwipeRepository::increment)
+        } catch (exception: RuntimeException) {
+            Log.w(TAG, "Dating activity observation was unavailable", exception)
+        }
     }
 
     private fun showInstagramQuarantine(

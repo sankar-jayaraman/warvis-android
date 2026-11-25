@@ -21,6 +21,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.warvis.android.data.model.WarvisState
+import com.warvis.android.dating.DatingApp
+import com.warvis.android.dating.DatingSwipeRepository
 import com.warvis.android.doom.DoomShieldSettingsLaunchResult
 import com.warvis.android.doom.InstagramGamingPhase
 import com.warvis.android.doom.InstagramGamingRepository
@@ -42,6 +44,7 @@ internal fun TodayScreen(
     onOpenTaskRatchetSetup: () -> Unit,
     onOpenInstagramGaming: () -> Unit,
     instagramGamingRepository: InstagramGamingRepository,
+    datingSwipeRepository: DatingSwipeRepository,
     nightCurfewSchedule: NightCurfewSchedule,
     doomShieldEnabled: Boolean,
     onDoomShieldAction: () -> DoomShieldSettingsLaunchResult?,
@@ -50,10 +53,14 @@ internal fun TodayScreen(
     var instagramGamingPhase by remember(instagramGamingRepository) {
         mutableStateOf(instagramGamingRepository.status().phase)
     }
+    var datingSwipeSnapshot by remember(datingSwipeRepository) {
+        mutableStateOf(datingSwipeRepository.readToday())
+    }
 
-    LaunchedEffect(instagramGamingRepository) {
+    LaunchedEffect(instagramGamingRepository, datingSwipeRepository) {
         while (true) {
             instagramGamingPhase = instagramGamingRepository.status().phase
+            datingSwipeSnapshot = datingSwipeRepository.readToday()
             delay(1_000L)
         }
     }
@@ -113,6 +120,34 @@ internal fun TodayScreen(
                 SectionTitle("Weekly momentum")
                 ProgressBlock("4-week sprint", state.sprintProgress)
                 Text("North star: build a compliant PE operator/TDD path before chasing outcomes.")
+            }
+
+            WarvisOutlinedCard {
+                SectionTitle("Dating app activity")
+                Text(
+                    text = "${datingSwipeSnapshot.totalCount} right-swipe estimates today",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                DatingApp.entries.forEach { app ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(app.displayName)
+                        Text(
+                            text = datingSwipeSnapshot.countFor(app).toString(),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+                Text(
+                    text = "Counts are accessibility-based estimates from Like or heart actions. " +
+                        "They may undercount actual swipes and work only while the WARVIS Accessibility service is enabled; " +
+                        "no profile or message content is stored.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             WarvisOutlinedCard {
